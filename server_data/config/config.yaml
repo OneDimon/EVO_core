@@ -1,0 +1,9 @@
+model_list:
+  - model_name: evo-core
+    litellm_params:
+      model: gemini/gemini-pro
+      api_key: "os.environ/GEMINI_API_KEY"
+  - model_name: hermes-local
+    litellm_params:
+      model: ollama/hermes
+      api_base: "http://localhost:11434"
