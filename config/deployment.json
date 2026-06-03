@@ -1,0 +1,26 @@
+{
+  "evo_core": {
+    "version": "1.0.0",
+    "system_prompt": {
+      "auto_inject": true,
+      "sources": [
+        "prompts/flagship_system_prompt.txt",
+        ".claude/CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "inject_on": ["cli_connect", "mcp_connect", "api_key_auth"],
+      "priority": "immutable"
+    },
+    "endpoints": {
+      "query":       "POST /api/v1/query",
+      "result":      "POST /api/v1/result",
+      "hook_reply":  "POST /api/v1/hook_reply"
+    },
+    "flagship_rules": {
+      "bypass_core": false,
+      "reveal_internals": false,
+      "require_plan_before_execute": true,
+      "require_verification_before_output": true
+    }
+  }
+}
