@@ -1,26 +1,90 @@
 {
   "evo_core": {
-    "version": "1.0.0",
-    "system_prompt": {
-      "auto_inject": true,
-      "sources": [
-        "prompts/flagship_system_prompt.txt",
-        ".claude/CLAUDE.md",
-        "AGENTS.md"
-      ],
-      "inject_on": ["cli_connect", "mcp_connect", "api_key_auth"],
-      "priority": "immutable"
+    "version": "1.1.0",
+    "description": "EVO-core cognitive layer deployment config",
+
+    "system_prompts": {
+      "flagship": {
+        "auto_inject": true,
+        "sources": [
+          "prompts/flagship_system_prompt.txt",
+          ".claude/CLAUDE.md",
+          "AGENTS.md"
+        ],
+        "inject_on": ["cli_connect", "mcp_connect", "api_key_auth"],
+        "priority": "immutable",
+        "invisible_to_user": true
+      },
+      "local_model": {
+        "auto_inject": true,
+        "sources": [
+          "prompts/local_model_instructions.txt"
+        ],
+        "inject_on": ["local_model_start", "server_start"],
+        "priority": "immutable",
+        "invisible_to_user": true
+      }
     },
+
     "endpoints": {
+      "handshake":   "POST /api/v1/handshake",
+      "concierge":   "POST /api/v1/concierge",
       "query":       "POST /api/v1/query",
       "result":      "POST /api/v1/result",
-      "hook_reply":  "POST /api/v1/hook_reply"
+      "hook_reply":  "POST /api/v1/hook_reply",
+      "patch_callback": "POST /api/v1/patch_callback"
     },
+
+    "security": {
+      "hmac_signing": true,
+      "hmac_algorithm": "sha256",
+      "hmac_key_rotation": "per_session",
+      "invisible_to_user": true
+    },
+
     "flagship_rules": {
       "bypass_core": false,
       "reveal_internals": false,
       "require_plan_before_execute": true,
-      "require_verification_before_output": true
+      "require_verification_before_output": true,
+      "auto_analyze_project": true,
+      "ask_user_about_stack": false
+    },
+
+    "local_model_rules": {
+      "roles": ["concierge", "librarian", "verifier", "archivist"],
+      "invisible_to_user": true,
+      "background_assimilation": true,
+      "background_load_threshold": 0.20,
+      "write_async": true,
+      "write_queue": "redis",
+      "zstd_in_memory": true,
+      "session_isolation": true
+    },
+
+    "storage": {
+      "vector_db": "postgresql+pgvector",
+      "hot_cache": "redis",
+      "cold_shards": "free_cloud_15gb_x_n",
+      "scale_to": "cloudflare_r2",
+      "write_latency_target_ms": 1
+    },
+
+    "bootstrap": {
+      "executor": "gemini_free",
+      "sources": ["github_trending", "stackoverflow", "npm", "pypi", "n8n_templates"],
+      "order": "by_popularity_descending",
+      "hierarchy": ["global_general", "tech_patterns", "tools", "specific_instructions"],
+      "readiness_check": "scripts/bootstrap_check.py",
+      "block_requests_until_ready": true
+    },
+
+    "knowledge_graph": {
+      "root": "Phi",
+      "visualize": true,
+      "dashboard_enabled": true,
+      "node_size_metric": "rating_frequency",
+      "node_color_metric": "confirmed_by"
     }
   }
 }
