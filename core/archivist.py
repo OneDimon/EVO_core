@@ -1,0 +1,127 @@
+"""
+Архивариус — запись и обновление символов.
+Работает асинхронно через очередь — пользователь не ждёт.
+"""
+import asyncio, logging, re
+from datetime import datetime
+from db.pg_client import find_symbols, insert_symbol, update_symbol_type_a, increment_rating
+from db.redis_client import enqueue_write
+from shards.shard_client import write_cell
+from core.ai_router import ai_router
+
+log = logging.getLogger("evo.archivist")
+
+async def archive(session_id: str, output: str, solution_quality: str,
+                  deviations: str, applied_stack: list[str],
+                  original_tz: str, context: dict):
+    """Точка входа архивации — ставит в очередь, не блокирует."""
+    await enqueue_write({
+        "session_id": session_id,
+        "output": output,
+        "solution_quality": solution_quality,
+        "deviations": deviations,
+        "applied_stack": applied_stack,
+        "original_tz": original_tz,
+        "context": context,
+        "timestamp": datetime.now().isoformat()
+    })
+    # Запускаем фоновую задачу
+    asyncio.create_task(_process_archive(
+        output, solution_quality, deviations, applied_stack, original_tz, context
+    ))
+
+
+async def _process_archive(output: str, solution_quality: str,
+                            deviations: str, applied_stack: list[str],
+                            original_tz: str, context: dict):
+    """Полный цикл архивации — Контур Obsidian."""
+    try:
+        # 1. Векторизовать новое знание
+        vector = await ai_router.embed(output[:500] + " " + original_tz[:200])
+
+        # 2. Similarity check
+        similar = await find_symbols(vector, top_k=3, exclude_legacy=False)
+        top_sim = similar[0].get('similarity', 0) if similar else 0
+
+        if top_sim > 0.95:
+            await _type_a(similar[0], output, applied_stack, vector)
+        elif top_sim > 0.75:
+            await _type_b(similar[0], output, applied_stack, applied_stack, vector, original_tz)
+        else:
+            await _new_symbol(output, applied_stack, vector, original_tz)
+
+    except Exception as e:
+        log.error(f"Archive failed: {e}")
+
+
+async def _type_a(existing: dict, new_output: str,
+                   applied_stack: list[str], vector: list[float]):
+    """Тип А: перезапись — улучшение существующего решения."""
+    evolution_note = await ai_router.generate(
+        f"old: {existing['label']} | new: {new_output[:200]}", "evolution_note"
+    )
+    shard_path = f"/evo/{existing['science'][:3].upper()}/{existing['id']}_v2.zst"
+    await write_cell("", shard_path, new_output)
+    await update_symbol_type_a(
+        existing['id'], shard_path, evolution_note, existing['id'] + "_legacy"
+    )
+    log.info(f"[Тип А] Updated {existing['id']}")
+
+
+async def _type_b(parent: dict, new_output: str, new_stack: list[str],
+                   applied_stack: list[str], vector: list[float], original_tz: str):
+    """Тип Б: новый символ для других обстоятельств."""
+    symbol_id = await _generate_id(parent['science'], parent['section'],
+                                     parent['subsection'])
+    shard_path = f"/evo/{parent['science'][:3].upper()}/{symbol_id}.zst"
+    await write_cell("", shard_path, new_output)
+    await insert_symbol({
+        "id": symbol_id,
+        "label": f"задача: {original_tz[:80]} | стек: {','.join(new_stack[:3])}",
+        "vector": vector,
+        "science": parent['science'],
+        "section": parent['section'],
+        "subsection": parent['subsection'],
+        "evolved_from": parent['id'],
+        "evolution_note": f"новые условия: стек {new_stack}",
+        "applicable_stacks": applied_stack,
+        "shard_host": "", "shard_path": shard_path,
+    })
+    log.info(f"[Тип Б] Created {symbol_id}")
+
+
+async def _new_symbol(output: str, applied_stack: list[str],
+                       vector: list[float], original_tz: str):
+    """Новый символ с нуля (gap_filled)."""
+    root = await ai_router.classify(output[:300], "macro_root")
+    root = root.strip()[:2]
+    symbol_id = await _generate_id(root, "new", "new")
+    shard_path = f"/evo/{root.upper()}/{symbol_id}.zst"
+    await write_cell("", shard_path, output)
+    await insert_symbol({
+        "id": symbol_id,
+        "label": f"задача: {original_tz[:80]} | решение: {output[:80]}",
+        "vector": vector,
+        "science": root,
+        "section": "new",
+        "subsection": "new",
+        "applicable_stacks": applied_stack,
+        "shard_host": "", "shard_path": shard_path,
+    })
+    log.info(f"[Новый] Created {symbol_id}")
+
+
+async def _generate_id(science: str, section: str, subsection: str) -> str:
+    """Генерация ID по нотации SCL: τ^{auto}_{zp_0047}"""
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM scl_symbols WHERE science=$1 AND section=$2 AND subsection=$3",
+            science, section, subsection
+        )
+    num = str(int(count or 0) + 1).zfill(4)
+    sec = re.sub(r'[^a-zA-Z0-9]', '_', section[:8].lower())
+    sub = re.sub(r'[^a-zA-Z0-9]', '_', subsection[:4].lower())
+    sym = science[:2] if len(science) <= 2 else science[0]
+    return f"{sym}^{{{sec}}}_{{{sub}_{num}}}"
