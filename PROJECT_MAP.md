@@ -1,8 +1,8 @@
 # EVO-core — Project Map
 
 > **Правило входа:** Прочитай этот файл ПЕРВЫМ при каждой сессии.
-> Карта проекта, статус блоков, что сшито, что деплоить следующим.
-> YMS-MMM ACTIVE | Архитектор: @OneDimon | v1.1
+> Карта проекта, статус блоков, сшивка, что деплоить следующим.
+> YMS-MMM ACTIVE | Архитектор: @OneDimon | v2.0
 
 ---
 
@@ -11,167 +11,184 @@
 ```
 evo-core/
 ├── PROJECT_MAP.md              ← ТЫ ЗДЕСЬ. Читать первым.
-├── README.md
 │
-├── api/                        ← FastAPI эндпоинты (БЛОК 01)
-│   ├── main.py                 ✅ готов
+├── api/
+│   ├── main.py                 ✅ v0.2 + startup init
 │   └── routes/
 │       ├── handshake.py        ✅ POST /api/v1/handshake
 │       ├── concierge.py        ✅ POST /api/v1/concierge
 │       ├── query.py            ✅ POST /api/v1/query + Redis план
 │       ├── step_done.py        ✅ POST /api/v1/step_done
-│       ├── result.py           ✅ POST /api/v1/result
-│       └── hook_reply.py       ✅ POST /api/v1/hook_reply
+│       ├── result.py           ✅ POST /api/v1/result + verifier + obsidian
+│       ├── hook_reply.py       ✅ POST /api/v1/hook_reply
+│       └── admin.py            ✅ Admin API — токены/конфиги/шарды
 │
 ├── core/
 │   ├── ai_router.py            ✅ Gemini→Flash→Ollama fallback
 │   ├── librarian.py            ✅ поиск + Redis план + step_body
-│   ├── archivist.py            ✅ Тип А/Б + confirmed_in + is_legacy
-│   ├── concierge.py            🔴 Фаза 1
-│   ├── verifier.py             🔴 Фаза 1 (YMS-MMM)
-│   ├── obsidian.py             🔴 Фаза 1 (Тип А/Б расширенный)
-│   └── sleep_mode.py           🔴 Фаза 1
+│   ├── archivist.py            ✅ Тип А/Б + confirmed_in + legacy
+│   ├── verifier.py             ✅ YMS-MMM полная верификация
+│   ├── obsidian.py             ✅ Тип А/Б + лигатуры + граф
+│   ├── config_manager.py       ✅ единый конфиг из БД + Admin UI
+│   ├── sleep_mode.py           ✅ СОН + фон + ТГ-уведомления
+│   └── concierge.py            🔴 Фаза 2 (детальная логика вопросов)
 │
 ├── db/
 │   ├── models.py               ✅ SCLSymbol + все поля
-│   ├── pg_client.py            ✅ find/insert/update/increment
-│   ├── redis_client.py         ✅ кэш + план + очередь + RPS stats
+│   ├── pg_client.py            ✅ CRUD + векторный поиск
+│   ├── redis_client.py         ✅ кэш + план + очередь + RPS
 │   └── migrations/
-│       └── 001_init.sql        ✅ все таблицы + 9 индексов
+│       ├── 001_init.sql        ✅ scl_symbols + 9 индексов
+│       └── 002_config.sql      ✅ evo_config + начальные значения
 │
 ├── shards/
 │   ├── zstd_codec.py           ✅ compress/decompress + гиперлинки
-│   └── shard_client.py         ✅ read/write + fallback зеркало
+│   └── shard_client.py         ✅ local|gdrive|github|r2 + autopatch
 │
 ├── config/
-│   ├── ai_router.json          ✅ Gemini/Ollama роутинг
-│   ├── deployment.json         ✅ полный деплой конфиг
-│   └── notifications.json      🔴 заполнить TG_BOT_TOKEN при деплое
+│   ├── ai_router.json          ✅
+│   ├── deployment.json         ✅
+│   └── notifications.json      → заполняется через Admin UI
 │
 ├── prompts/
 │   ├── flagship_system_prompt.txt    ✅ v3.0
 │   └── local_model_instructions.txt  ✅ v1.0
 │
 ├── scripts/
-│   ├── bootstrap.py            ✅ 8 стартовых символов
-│   ├── bootstrap_check.py      ✅ проверка готовности
-│   └── deploy.sh               ✅ full|start|migrate|test|logs
+│   ├── bootstrap.py            ✅
+│   ├── bootstrap_check.py      ✅
+│   └── deploy.sh               ✅
 │
 ├── tests/
-│   ├── test_phase0.py          ✅ 9 тестов полного цикла
-│   └── test_notation.py        ✅ гиперлинки + zstd + ID формат
+│   ├── test_phase0.py          ✅ 9 тестов
+│   └── test_notation.py        ✅ 3 теста
 │
-├── .env.example                ✅
-├── docker-compose.yml          ✅ postgres pgvector + redis + api
-├── Dockerfile                  ✅
-└── requirements.txt            ✅
+├── .env.example / docker-compose.yml / Dockerfile / requirements.txt  ✅
 ```
 
 ---
 
 ## Статус блоков
 
-| Блок | Файлы | Статус | Сшит с | Проверено |
-|------|-------|--------|--------|-----------|
-| **БЛОК 01** Core Engine | `api/`, `core/ai_router.py` | 🟡 Фаза 0 готов | 02✅ 03✅ 06🔴 | handshake→concierge→query→step→result→hook |
-| **БЛОК 02** Language Library | `core/librarian.py`, `core/archivist.py`, `db/` | 🟡 Фаза 0 готов | 01✅ 03✅ 06🔴 | поиск + запись + confirmed_in |
-| **БЛОК 03** Shard Storage | `shards/` | 🟢 Готов | 01✅ 02✅ | zstd + гиперлинки + fallback |
-| **БЛОК 04** CLI Layer | — | 🔴 Фаза 2 | — | — |
-| **БЛОК 05** MCP Server | — | 🔴 Фаза 2 | — | — |
-| **БЛОК 06** YMS-MMM | `core/verifier.py` | 🔴 Фаза 1 | — | — |
-| **БЛОК 07** Immune System | n8n воркфлоу | 🔴 Фаза 2 | — | — |
-| **AI Router** | `core/ai_router.py` | 🟢 Готов | все | Gemini+Ollama |
-| **Sleep Mode** | `core/sleep_mode.py` | 🔴 Фаза 1 | — | — |
-
-**Статусы:** 🔴 Не начат / 🟡 В работе / 🟢 Готов / 🔵 Сшит и проверен
-
----
-
-## Сшивка блоков (Фаза 0)
-
-```
-БЛОК 01 ──query──────→ БЛОК 02 (librarian.search)     ✅ сшит
-БЛОК 01 ──step_done──→ БЛОК 02 (librarian.load_step)  ✅ сшит
-БЛОК 02 ──shard_read─→ БЛОК 03 (shard_client.read)    ✅ сшит
-БЛОК 02 ──write──────→ БЛОК 03 (shard_client.write)   ✅ сшит
-БЛОК 01 ──result─────→ БЛОК 02 (archivist.archive)    ✅ сшит
-БЛОК 01 ──all routes─→ AI Router (ai_router.*)         ✅ сшит
-Redis    ←plan cache──  БЛОК 01 query                  ✅ сшит
-Redis    ──plan read──→ БЛОК 01 step_done              ✅ сшит
-
-БЛОК 01 ──verify─────→ БЛОК 06                        🔴 Фаза 1
-БЛОК 06 ──webhook────→ БЛОК 07                        🔴 Фаза 2
-```
+| Блок | Статус | Реализовано | Сшивка |
+|------|--------|-------------|--------|
+| **01** Core Engine | 🟡 Ф.0+1 | 6 эндпоинтов + Admin API | 02✅ 03✅ 06✅ |
+| **02** Language Library | 🟡 Ф.0+1 | librarian + archivist + pg + redis | 01✅ 03✅ 06✅ |
+| **03** Shard Storage | 🟢 Готов | local+gdrive+github+r2 + autopatch | 01✅ 02✅ |
+| **04** CLI Layer | 🔴 Ф.2 | — | — |
+| **05** MCP Server | 🔴 Ф.2 | — | — |
+| **06** YMS-MMM+Obsidian | 🟢 Готов | verifier + obsidian + лигатуры | 01✅ 02✅ 07⚠ |
+| **07** Immune System | 🔴 Ф.2 | заглушка reanimate | — |
+| **AI Router** | 🟢 Готов | Gemini+Flash+Ollama | все |
+| **Config+Admin** | 🟢 Готов | config_manager + Admin API | все |
+| **Sleep Mode** | 🟢 Готов | СОН + фон + ТГ + Arch.notify | 01 06 |
 
 ---
 
-## Порядок деплоя
+## Сшивка блоков
 
-### Фаза 0 — СЕЙЧАС (всё готово)
+```
+01 ──query────────→ 02 librarian.search()              ✅
+01 ──step_done────→ 02 librarian.load_step_body()      ✅
+01 ──result───────→ 06 verifier.verify()               ✅
+01 ──result───────→ 06 obsidian.process() [async]      ✅
+01 ──archive──────→ 02 archivist.archive() [async]     ✅
+02 ──read/write───→ 03 shard_client.*                  ✅
+03 ──autopatch────→ 02 pg_client._attach_link()        ✅
+06 ──Тип А/Б──────→ 02 archivist._type_a/_type_b       ✅
+06 ──лигатуры─────→ 02 pg_client.insert_symbol()       ✅
+all ──ai calls────→ AI Router (config/ai_router.json)  ✅
+all ──config──────→ config_manager (Admin UI → БД)     ✅
+sleep ──notify────→ ТГ Bot + Admin /notify             ✅
+01 ──reanimate─→ 07 webhook                            ⚠ Ф.2
+04 CLI ───────→ 01 /api/v1/query                       ⚠ Ф.2
+05 MCP ───────→ 01 /api/v1/*                           ⚠ Ф.2
+```
+
+---
+
+## Где вносить токены (ОДИН РАЗ — применяется везде)
+
+Все токены и конфиги вносятся через **Admin API**:
 
 ```bash
-git clone https://github.com/OneDimon/EVO_core
-cd EVO_core
-cp .env.example .env
-# Заполнить GEMINI_API_KEY в .env
-./scripts/deploy.sh full
-# Ожидаемый результат: Phase 0 Tests: 9/9 passed
+# Telegram бот
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -H "X-Admin-Token: your_admin_secret" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"TG_BOT_TOKEN","value":"your_token"}'
+
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"TG_ADMIN_CHAT_ID","value":"your_chat_id"}'
+
+# Шард Google Drive
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"SHARD_PROVIDER","value":"gdrive"}'
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"SHARD_GDRIVE_TOKEN","value":"ya29...."}'
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"SHARD_GDRIVE_FOLDER","value":"folder_id"}'
+
+# Шард GitHub
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"SHARD_PROVIDER","value":"github"}'
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"SHARD_GITHUB_TOKEN","value":"ghp_..."}'
+curl -X POST http://localhost:8000/api/v1/admin/config \
+  -d '{"key":"SHARD_GITHUB_REPO","value":"owner/shard-repo"}'
+
+# Тест подключения шарда
+curl http://localhost:8000/api/v1/admin/shards/test \
+  -H "X-Admin-Token: your_admin_secret"
 ```
 
-Что проверяет:
-- handshake → session_id + hmac_key
-- concierge → context_accepted
-- query → картридж (full/partial/gap)
-- step_done → тело шага из Redis
-- result workability=false → rejected
-- result workability=true → verified + hook
-- hook_reply → session_complete
+Все значения сохраняются в БД (evo_config) и читаются везде автоматически через `config_manager.get(key)`. Перезапуск не нужен.
 
-### Фаза 1 (следующий этап после зелёных тестов Фазы 0)
+---
 
-```
-Добавить:
-+ core/verifier.py      (YMS-MMM полная проверка)
-+ core/obsidian.py      (контур логики + граф)
-+ core/sleep_mode.py    (режим СОН + уведомления)
-+ config/notifications.json (TG_BOT_TOKEN)
-Обновить:
-~ api/routes/result.py  (подключить verifier вместо auto-verify)
-~ BLOCK_06_ymm_verifier.md статус → 🟡
+## Готово к тестированию
+
+### Фаза 0+1 — READY
+
+```bash
+git clone https://github.com/OneDimon/EVO_core && cd EVO_core
+cp .env.example .env          # заполнить GEMINI_API_KEY
+./scripts/deploy.sh full      # docker + migrate + bootstrap + test
+# Ожидается: Phase 0 Tests: 9/9 passed
 ```
 
-### Фаза 2
+После запуска — внести токены через Admin API (выше).
+
+### Что проверяется в тестах Фазы 0:
+1. handshake → session_id
+2. concierge → context_accepted
+3. query → картридж (full/partial/gap)
+4. step_done → тело шага N+1
+5. result workability=false → rejected
+6. result workability=true → verified + YMS-MMM + Obsidian async
+7. hook_reply → session_complete
+
+### Фаза 2 (следующий этап)
 
 ```
-+ БЛОК 04 CLI Layer
-+ БЛОК 05 MCP Server
-+ БЛОК 07 n8n Immune System
++ БЛОК 04 CLI Layer    (core/cli_layer.py + LiteLLM proxy)
++ БЛОК 05 MCP Server   (core/mcp_server.py + StreamableHTTP)
++ БЛОК 07 Immune System (n8n workflow + webhook /api/v1/patch_callback)
++ Sleep scheduler      (APScheduler в startup)
++ Admin UI frontend    (React dashboard)
 ```
 
 ---
 
-## Ключевые правила (при каждом входе)
-
-1. **Нотация** → `SCL_SYMBOLIC_NOTATION.md` — все ID символов по нотации
-2. **Протокол библиотеки** → `SCL_FRACTAL_PROTOCOL.md`
-3. **AI-вызовы** → только через `core/ai_router.py`
-4. **Запись** → всегда асинхронно через `db/redis_client.enqueue_write`
-5. **Legacy** → `is_legacy=True` + `superseded_by` — не удалять символы
-6. **Хронология** → `evolved_from`, `evolution_note` неприкосновенны
-7. **Workability** → флагман сам проверяет, отчитывается с флагом
-8. **step_done** → каждый следующий шаг только после предыдущего
-
----
-
-## При следующем входе — чеклист
+## Чеклист при каждом входе
 
 ```
 □ Прочитал PROJECT_MAP.md
-□ Проверил статус блоков в таблице
-□ Проверил сшивку блоков
-□ Открыл BLOCK_XX нужного блока — прочитал коннекторы
-□ Обновил статус после завершения
+□ Проверил статус и сшивку блоков
+□ Открыл BLOCK_XX нужного блока → коннекторы + зависимости
+□ Обновил статус после завершения работы
+□ Проверил что autopatch shard_link работает после write_cell
 ```
 
 ---
-*Обновлён: 2026-06-03 | v1.1 — Фаза 0 код готов, 5 багов исправлено*
+*v2.0 | 2026-06-03 | Фаза 0+1 реализована | 9 файлов Фазы 1 загружены*
