@@ -27,6 +27,7 @@
 | [БЛОК 01](BLOCK_01_core_engine.md) | Новое верифицированное знание | `SCLSymbol` |
 | [БЛОК 01](BLOCK_01_core_engine.md) | Инкремент рейтинга | `{id: str}` |
 | [БЛОК 01](BLOCK_01_core_engine.md) | Запрос по стеку пользователя | `StackQuery {stack[], project_context}` |
+| [БЛОК 06](BLOCK_06_ymm_verifier.md) | Команда архивации (Тип А/Б/новый) | `ArchiveRequest` |
 
 ### Отдаёт на выход
 | Получатель | Что отдаёт | Формат |
@@ -93,6 +94,8 @@ class SCLSymbol(BaseModel):
     # Рейтинги
     rating_frequency: int = 0    # R_f — только инкрементируется, никогда не сбрасывается
     confirmed_by: int = 1        # сколько смежных областей подтвердили знание
+    confirmed_in: list[str] = [] # какие макро-корни подтвердили: ["τ", "κ", "η"]
+                                 # при confirmed_by >= 3 — кандидат на лигатуру
 
     # Эволюция — неприкосновенна
     evolved_from: Optional[str] = None
@@ -101,6 +104,14 @@ class SCLSymbol(BaseModel):
 
     # Хранилище тела знания
     shard_link: ShardLink
+
+    # Legacy и эволюция версий
+    is_legacy: bool = False              # помечен как устаревший (заменён новым)
+    superseded_by: Optional[str] = None  # ID символа который заменил этот
+    supersedes: Optional[str] = None     # ID символа который этот заменил
+
+    # Фоновая ассимиляция
+    hypothesis: bool = False             # кандидат на проверку из фоновой работы
 
     # Альтернативные решения (набор ID символов под другие стеки)
     # Не файлы — ссылки на существующие символы в библиотеке
@@ -148,6 +159,17 @@ CREATE TABLE scl_symbols (
     -- Применимые стеки
     applicable_stacks TEXT[] DEFAULT '{}',
 
+    -- Тройное подтверждение (для создания лигатур)
+    confirmed_in      TEXT[] DEFAULT '{}',  -- макро-корни подтвердившие знание
+
+    -- Legacy версионирование
+    is_legacy         BOOLEAN DEFAULT FALSE,
+    superseded_by     TEXT REFERENCES scl_symbols(id),
+    supersedes        TEXT REFERENCES scl_symbols(id),
+
+    -- Фоновая ассимиляция
+    hypothesis        BOOLEAN DEFAULT FALSE, -- кандидат на проверку
+
     -- Гиперлинки (уточняющие детали проекта)
     hyperlinks        TEXT[] DEFAULT '{}',
 
@@ -167,6 +189,15 @@ CREATE INDEX ON scl_symbols (rating_frequency DESC);
 
 -- Поиск по стеку
 CREATE INDEX ON scl_symbols USING gin (applicable_stacks);
+
+-- Поиск по подтверждённым областям (для создания лигатур)
+CREATE INDEX ON scl_symbols USING gin (confirmed_in);
+
+-- Поиск legacy символов
+CREATE INDEX ON scl_symbols (is_legacy, superseded_by);
+
+-- Поиск кандидатов для фоновой ассимиляции
+CREATE INDEX ON scl_symbols (hypothesis, last_updated);
 ```
 
 ---
@@ -319,6 +350,7 @@ async def enqueue_write(symbol: SCLSymbol):
 |------|--------|---------------|
 | [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔴 Не сшит | — |
 | [БЛОК 03](BLOCK_03_shard_storage.md) Shard Storage | 🔴 Не сшит | — |
+| [БЛОК 06](BLOCK_06_ymm_verifier.md) YMS-MMM Verifier | 🔴 Не сшит | — |
 
 ---
 
