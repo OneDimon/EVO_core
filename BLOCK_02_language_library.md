@@ -13,7 +13,7 @@
 | Параметр | Значение |
 |----------|----------|
 | **Фаза** | Фаза 0 — первым в очереди |
-| **Статус блока** | 🔴 Не начат |
+| **Статус блока** | 🟡 Фаза 0 реализована |
 | **Последний апдейт** | 2026-06-03 |
 
 ---
@@ -348,8 +348,8 @@ async def enqueue_write(symbol: SCLSymbol):
 
 | Блок | Статус | Что проверено |
 |------|--------|---------------|
-| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔴 Не сшит | — |
-| [БЛОК 03](BLOCK_03_shard_storage.md) Shard Storage | 🔴 Не сшит | — |
+| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔵 Сшит | librarian.search + archivist.archive |
+| [БЛОК 03](BLOCK_03_shard_storage.md) Shard Storage | 🔵 Сшит | read/write через shard_client |
 | [БЛОК 06](BLOCK_06_ymm_verifier.md) YMS-MMM Verifier | 🔴 Не сшит | — |
 
 ---
