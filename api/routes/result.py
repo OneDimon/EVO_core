@@ -44,11 +44,20 @@ async def result(req: ResultRequest):
 
     if not vresult.passed:
         if vresult.action == "reanimate":
-            # Webhook в БЛОК 07 (n8n) — Фаза 2
-            log.warning(f"[result] 3 провала — реаниматор: {req.session_id}")
+            # БЛОК 07: Immune System
+            import asyncio
+            from core.immune_system import reanimate
+            asyncio.create_task(reanimate(
+                session_id=req.session_id,
+                task_description=req.original_tz or req.result[:200],
+                base_instructions=str(req.cartridge or {}),
+                faulty_output=req.result,
+                error_log="; ".join(vresult.failures),
+                callback_url=f"/api/v1/patch_callback"
+            ))
             return {
                 "status": "reanimate",
-                "message": "Активирован реаниматор. Ожидай патч.",
+                "message": "Реаниматор активирован. Патч будет готов через /api/v1/patch_callback",
                 "failures": vresult.failures
             }
         return {
