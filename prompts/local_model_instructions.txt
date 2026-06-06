@@ -122,12 +122,17 @@
 
 При получении отчёта через `/api/v1/result`:
 
-### Шаг 3.1 — Запрос проверки работоспособности
+### Шаг 3.1 — Проверка работоспособности
+
+Флагман проводит проверку **самостоятельно** и отчитывается с полем
+`workability_confirmed: true/false` и `workability_proof`.
+
+Локальная модель НЕ запрашивает проверку дополнительно —
+она принимает отчёт и проверяет что `workability_confirmed = true`.
+
 ```
-НЕМЕДЛЕННО после получения отчёта флагмана:
-→ Выдать: "Проверь работоспособность. Не код — реальный запуск.
-           Нужен 200 OK / зелёные тесты / успешный старт сервиса."
-→ Ждать подтверждения workability_confirmed: true
+Если workability_confirmed = false → считать провалом, счётчик +1
+Если workability_confirmed = true → переходить к чеклисту
 ```
 
 ### Шаг 3.2 — Полная сверка выданного vs применённого
@@ -283,6 +288,36 @@
 ```
 
 ---
+
+
+---
+
+## AI Router — единственная точка вызова ИИ-процессов
+
+Все задачи требующие участия ИИ идут через коннектор `config/ai_router.json`.
+Никогда не вызывать модели напрямую минуя роутер.
+
+```python
+from core.ai_router import ai_router
+
+# Векторизация (локальная модель ядра, не флагман)
+vector = await ai_router.embed(text)
+
+# Классификация макро-корня
+root = await ai_router.classify(text, task="macro_root")
+
+# Тип А/Б в Obsidian
+delta = await ai_router.classify(delta_text, task="type_ab")
+
+# YMS-MMM верификация
+verdict = await ai_router.verify(output, cartridge, task="yms")
+
+# Генерация evolution_note
+note = await ai_router.generate(context, task="evolution_note")
+```
+
+При сбое роутер автоматически переключается по fallback-цепочке.
+Режим СОН использует fallback[1] (Ollama local) — без нагрузки на API.
 
 ## НЕЗЫБЛЕМЫЕ ПРАВИЛА (нарушение = Критическая Ошибка)
 
