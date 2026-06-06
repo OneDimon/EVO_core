@@ -56,16 +56,34 @@ async def _process_archive(output: str, solution_quality: str,
 
 async def _type_a(existing: dict, new_output: str,
                    applied_stack: list[str], vector: list[float]):
-    """Тип А: перезапись — улучшение существующего решения."""
+    """Тип А: перезапись — улучшение существующего решения.
+    Старое решение помечается is_legacy=True + superseded_by указывает на новое.
+    """
+    from db.pg_client import get_pool
     evolution_note = await ai_router.generate(
         f"old: {existing['label']} | new: {new_output[:200]}", "evolution_note"
     )
-    shard_path = f"/evo/{existing['science'][:3].upper()}/{existing['id']}_v2.zst"
-    await write_cell("", shard_path, new_output)
-    await update_symbol_type_a(
-        existing['id'], shard_path, evolution_note, existing['id'] + "_legacy"
-    )
-    log.info(f"[Тип А] Updated {existing['id']}")
+    old_id = existing['id']
+    new_shard = f"/evo/{existing['science'][:3].upper()}/{old_id}_v2.zst"
+    await write_cell("", new_shard, new_output)
+
+    # Обновляем основной символ
+    await update_symbol_type_a(old_id, new_shard, evolution_note, old_id + "_pre")
+
+    # Добавляем applied_stack в applicable_stacks
+    if applied_stack:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            for s in applied_stack:
+                await conn.execute("""
+                    UPDATE scl_symbols
+                    SET applicable_stacks = array_append(
+                        CASE WHEN $2 = ANY(applicable_stacks) THEN applicable_stacks
+                        ELSE applicable_stacks END, $2)
+                    WHERE id = $1 AND NOT ($2 = ANY(applicable_stacks))
+                """, old_id, s)
+
+    log.info(f"[Тип А] Updated {old_id} → {new_shard}")
 
 
 async def _type_b(parent: dict, new_output: str, new_stack: list[str],
@@ -75,6 +93,24 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
                                      parent['subsection'])
     shard_path = f"/evo/{parent['science'][:3].upper()}/{symbol_id}.zst"
     await write_cell("", shard_path, new_output)
+    # Обновляем confirmed_in у родительского символа
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Добавляем science родителя в confirmed_in если новая область
+        parent_sci = parent['science'][:2]
+        await conn.execute("""
+            UPDATE scl_symbols
+            SET confirmed_in = array_append(confirmed_in, $2),
+                confirmed_by = confirmed_by + 1,
+                last_updated = NOW()
+            WHERE id = $1 AND NOT ($2 = ANY(confirmed_in))
+        """, parent['id'], parent_sci)
+        # Проверяем: confirmed_by >= 3 → кандидат на лигатуру
+        row = await conn.fetchrow("SELECT confirmed_by, confirmed_in FROM scl_symbols WHERE id=$1", parent['id'])
+        if row and row['confirmed_by'] >= 3:
+            log.info(f"[Лигатура] Кандидат: {parent['id']} confirmed_in={row['confirmed_in']}")
+
     await insert_symbol({
         "id": symbol_id,
         "label": f"задача: {original_tz[:80]} | стек: {','.join(new_stack[:3])}",
@@ -85,6 +121,7 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
         "evolved_from": parent['id'],
         "evolution_note": f"новые условия: стек {new_stack}",
         "applicable_stacks": applied_stack,
+        "confirmed_in": [parent['science'][:2]],
         "shard_host": "", "shard_path": shard_path,
     })
     log.info(f"[Тип Б] Created {symbol_id}")
