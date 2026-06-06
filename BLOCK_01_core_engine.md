@@ -13,7 +13,7 @@
 | Параметр | Значение |
 |----------|----------|
 | **Фаза** | Фаза 0 (минимум) → Фаза 1 (полный конвейер) |
-| **Статус блока** | 🔴 Не начат |
+| **Статус блока** | 🟡 Фаза 0 реализована |
 | **Последний апдейт** | 2026-06-03 |
 
 ---
@@ -285,8 +285,8 @@ def verify_response(payload: dict, secret_key: str) -> bool:
 
 | Блок | Статус | Что проверено |
 |------|--------|---------------|
-| [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔴 Не сшит | — |
-| [БЛОК 03](BLOCK_03_shard_storage.md) Shard Storage | 🔴 Не сшит | — |
+| [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔵 Сшит | query→search, step_done→load_step, result→archive |
+| [БЛОК 03](BLOCK_03_shard_storage.md) Shard Storage | 🔵 Сшит | через librarian→shard_client |
 | [БЛОК 06](BLOCK_06_ymm_verifier.md) YMS-MMM | 🔴 Не сшит | — |
 | [БЛОК 07](BLOCK_07_immune_system.md) Immune System | 🔴 Не сшит | — |
 
