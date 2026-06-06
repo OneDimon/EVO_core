@@ -56,6 +56,16 @@ async def search(query_text: str, plan_steps: list[str],
                 "body_loaded": False
             }
 
+    # Сохраняем план в Redis — step_done читает отсюда
+    plan_for_redis = [
+        {"symbol_id": sym['id'], "label": sym['label'], "step": i+1}
+        for i, sym in enumerate(symbols[:len(plan_steps)])
+    ]
+    if plan_for_redis and session_id:
+        from db.redis_client import cache_session_plan
+        import asyncio
+        asyncio.create_task(cache_session_plan(session_id, plan_for_redis))
+
     return {
         "scenario": scenario,
         "symbols": symbols,
