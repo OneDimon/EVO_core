@@ -1,0 +1,75 @@
+{
+  "evo_ai_router": {
+    "description": "Универсальный коннектор для всех AI-процессов ядра. Подключи любую модель — локальную или API.",
+    "version": "1.0.0",
+
+    "primary": {
+      "provider": "gemini",
+      "model": "gemini-2.5-pro",
+      "api_key_env": "GEMINI_API_KEY",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+      "rate_limit_rpm": 60,
+      "timeout_sec": 30
+    },
+
+    "fallback_chain": [
+      {
+        "provider": "gemini_flash",
+        "model": "gemini-2.0-flash",
+        "api_key_env": "GEMINI_API_KEY",
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "trigger": "primary_rate_limit OR primary_timeout"
+      },
+      {
+        "provider": "ollama_local",
+        "model": "llama3",
+        "endpoint": "http://localhost:11434/api/chat",
+        "trigger": "all_api_unavailable OR no_internet",
+        "note": "Локальная модель — 100% автономность"
+      },
+      {
+        "provider": "ollama_coder",
+        "model": "qwen2.5-coder:7b",
+        "endpoint": "http://localhost:11434/api/chat",
+        "trigger": "task_type == code_generation",
+        "note": "Специализированная кодовая модель"
+      }
+    ],
+
+    "routing_rules": {
+      "vectorization": "primary",
+      "concierge_questions": "primary",
+      "cartridge_assembly": "primary",
+      "yms_verification": "primary",
+      "obsidian_analysis": "primary",
+      "immune_system_patch": "primary",
+      "bootstrap_fill": "primary",
+      "background_assimilation": "fallback_chain[1]",
+      "sleep_mode": "fallback_chain[1]"
+    },
+
+    "retry_policy": {
+      "max_retries": 3,
+      "backoff_seconds": [5, 15, 45],
+      "on_exhausted": "fallback_chain"
+    },
+
+    "processes_requiring_ai": [
+      "vectorization",
+      "concierge_questions",
+      "similarity_check",
+      "obsidian_type_classification",
+      "evolution_note_generation",
+      "bootstrap_symbol_creation",
+      "immune_patch_generation",
+      "background_hypothesis_check",
+      "hook_query_evaluation",
+      "macro_root_classification"
+    ],
+
+    "add_new_model": {
+      "instructions": "Добавь объект в fallback_chain с полями: provider, model, api_key_env OR endpoint, trigger",
+      "supported_formats": ["openai_compatible", "anthropic", "google_gemini", "ollama", "litellm_proxy"]
+    }
+  }
+}
