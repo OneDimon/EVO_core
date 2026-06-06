@@ -13,7 +13,7 @@
 | Параметр | Значение |
 |----------|----------|
 | **Фаза** | Фаза 1 |
-| **Статус блока** | 🔴 Не начат |
+| **Статус блока** | 🟢 Готов (Фаза 1) |
 | **Последний апдейт** | 2026-06-03 |
 
 ---
@@ -287,9 +287,9 @@ class VerificationResult(BaseModel):
 
 | Блок | Статус | Что проверено |
 |------|--------|---------------|
-| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔴 Не сшит | — |
-| [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔴 Не сшит | — |
-| [БЛОК 07](BLOCK_07_immune_system.md) Immune System | 🔴 Не сшит | — |
+| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔵 Сшит | result.py → verifier.verify() + obsidian.process() |
+| [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔵 Сшит | obsidian → archivist Тип А/Б + лигатуры |
+| [БЛОК 07](BLOCK_07_immune_system.md) Immune System | 🟡 Заглушка | action=reanimate готов, webhook Фаза 2 |
 
 ---
 
