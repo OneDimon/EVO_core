@@ -1,0 +1,85 @@
+"""PostgreSQL + pgvector клиент для SCL символов."""
+import asyncpg, os, json
+from typing import Optional
+
+_pool = None
+
+async def get_pool():
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(
+            os.getenv("DATABASE_URL", "postgresql://evo_user:evo_secret@localhost:5432/evo_core"),
+            min_size=2, max_size=10
+        )
+    return _pool
+
+async def find_symbols(query_vector: list[float], top_k: int = 5,
+                       stack_filter: list[str] = None,
+                       exclude_legacy: bool = True) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Регистрируем тип vector
+        await conn.execute("SET LOCAL enable_seqscan = off")
+        vec_str = f"[{','.join(map(str, query_vector))}]"
+        where = "WHERE is_legacy = FALSE" if exclude_legacy else ""
+        if stack_filter:
+            stacks = "{" + ",".join(stack_filter) + "}"
+            where += f" AND applicable_stacks && ARRAY{stacks}::text[]" if where else f" WHERE applicable_stacks && ARRAY{stacks}::text[]"
+        rows = await conn.fetch(f"""
+            SELECT *, 1 - (vector <=> '{vec_str}'::vector) AS similarity,
+                   (1 - (vector <=> '{vec_str}'::vector)) * log(rating_frequency + 2) AS score
+            FROM scl_symbols {where}
+            ORDER BY score DESC LIMIT $1
+        """, top_k)
+        return [dict(r) for r in rows]
+
+async def get_symbol(symbol_id: str) -> Optional[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM scl_symbols WHERE id = $1", symbol_id)
+        return dict(row) if row else None
+
+async def insert_symbol(s: dict) -> bool:
+    pool = await get_pool()
+    vec_str = f"[{','.join(map(str, s['vector']))}]"
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO scl_symbols
+            (id,label,vector,science,section,subsection,confirmed_by,confirmed_in,
+             evolved_from,evolution_note,last_updated,shard_host,shard_path,shard_mirror,
+             legacy_symbols,applicable_stacks,hyperlinks,is_legacy,superseded_by,
+             supersedes,hypothesis,version_ts)
+            VALUES($1,$2,$3::vector,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW())
+            ON CONFLICT (id) DO NOTHING
+        """, s['id'], s['label'], vec_str, s['science'], s['section'], s['subsection'],
+            s.get('confirmed_by',1), s.get('confirmed_in',[]),
+            s.get('evolved_from'), s.get('evolution_note'),
+            s.get('shard_host',''), s.get('shard_path',''), s.get('shard_mirror'),
+            s.get('legacy_symbols',[]), s.get('applicable_stacks',[]),
+            s.get('hyperlinks',[]), s.get('is_legacy',False),
+            s.get('superseded_by'), s.get('supersedes'), s.get('hypothesis',False)
+        )
+    return True
+
+async def increment_rating(symbol_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE scl_symbols SET rating_frequency = rating_frequency + 1,
+            last_updated = NOW() WHERE id = $1
+        """, symbol_id)
+
+async def update_symbol_type_a(symbol_id: str, new_shard_path: str,
+                                evolution_note: str, old_symbol_id: str):
+    """Тип А: перезапись + сохранение старого в legacy_symbols."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE scl_symbols SET
+              shard_path = $2,
+              evolution_note = $3,
+              legacy_symbols = array_append(legacy_symbols, $4),
+              rating_frequency = rating_frequency + 1,
+              version_ts = NOW(), last_updated = NOW()
+            WHERE id = $1 AND version_ts = (SELECT version_ts FROM scl_symbols WHERE id = $1)
+        """, symbol_id, new_shard_path, evolution_note, old_symbol_id)
