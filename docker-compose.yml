@@ -1,0 +1,52 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: evo_postgres
+    environment:
+      POSTGRES_DB: evo_core
+      POSTGRES_USER: evo_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-evo_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - evo_pgdata:/var/lib/postgresql/data
+      - ./db/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evo_user -d evo_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: evo_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - evo_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: evo_api
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./config:/app/config:ro
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  evo_pgdata:
+  evo_redis_data:
