@@ -11,7 +11,7 @@
 | Параметр | Значение |
 |----------|----------|
 | **Фаза** | Фаза 0 — второй в очереди (после БЛОК 02) |
-| **Статус блока** | 🔴 Не начат |
+| **Статус блока** | 🟢 Готов |
 | **Последний апдейт** | 2026-06-03 |
 
 ---
@@ -171,8 +171,8 @@ async def compress_to_shard(content: str, target_path: str,
 
 | Блок | Статус сшивки | Что проверено |
 |------|--------------|---------------|
-| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔴 Не сшит | — |
-| [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔴 Не сшит | — |
+| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔵 Сшит | через librarian |
+| [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔵 Сшит | librarian+archivist используют shard_client |
 
 ---
 
