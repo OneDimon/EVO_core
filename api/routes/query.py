@@ -25,6 +25,16 @@ async def query(req: QueryRequest):
 
     scenario = result["scenario"]
 
+    # Сохранить план в Redis — step_done читает отсюда
+    if result.get("symbols"):
+        from db.redis_client import cache_session_plan
+        plan_data = [
+            {"symbol_id": s['id'], "label": s['label'], "step": i+1}
+            for i, s in enumerate(result["symbols"][:len(req.flagship_plan)])
+        ]
+        import asyncio
+        asyncio.create_task(cache_session_plan(req.session_id, plan_data))
+
     if scenario == "full":
         return {
             "status": "cartridge_ready",
