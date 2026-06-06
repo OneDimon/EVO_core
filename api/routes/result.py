@@ -1,9 +1,15 @@
-"""POST /api/v1/result — отчёт флагмана о выполнении."""
+"""
+POST /api/v1/result — отчёт флагмана.
+Фаза 1: подключён YMS-MMM verifier + контур Obsidian.
+"""
+import asyncio, logging
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
-from core.archivist import archive
+from core.verifier import VerifyRequest, verify
+from core.obsidian import process as obsidian_process, generate_hook_query
 
+log = logging.getLogger("evo.result")
 router = APIRouter()
 
 class ResultRequest(BaseModel):
@@ -13,41 +19,61 @@ class ResultRequest(BaseModel):
     steps_completed: list[int] = []
     workability_confirmed: bool
     workability_proof: str = ""
-    solution_quality: str   # "ideal" | "adapted" | "gap_filled"
+    solution_quality: str        # "ideal" | "adapted" | "gap_filled"
     deviations: Optional[str] = None
     applied_stack: list[str] = []
+    original_tz: Optional[str] = None
+    cartridge: Optional[dict] = None
     notes: Optional[str] = None
 
 @router.post("/result")
 async def result(req: ResultRequest):
-    if not req.workability_confirmed:
-        return {
-            "status": "failed",
-            "reason": "workability_confirmed = false",
-            "fix_directive": (
-                "Проверь работоспособность. Не код — реальный запуск. "
-                "Нужен 200 OK / зелёные тесты / успешный старт сервиса."
-            )
-        }
-
-    # Запускаем архивацию асинхронно — пользователь не ждёт
-    await archive(
+    vreq = VerifyRequest(
         session_id=req.session_id,
         output=req.result,
-        solution_quality=req.solution_quality,
-        deviations=req.deviations or "",
+        original_tz=req.original_tz or req.result[:200],
+        cartridge=req.cartridge or {},
         applied_stack=req.applied_stack,
-        original_tz=req.result[:200],
-        context={}
+        solution_quality=req.solution_quality,
+        deviations=req.deviations,
+        workability_confirmed=req.workability_confirmed,
+        workability_proof=req.workability_proof,
     )
 
+    vresult = await verify(vreq)
+
+    if not vresult.passed:
+        if vresult.action == "reanimate":
+            # Webhook в БЛОК 07 (n8n) — Фаза 2
+            log.warning(f"[result] 3 провала — реаниматор: {req.session_id}")
+            return {
+                "status": "reanimate",
+                "message": "Активирован реаниматор. Ожидай патч.",
+                "failures": vresult.failures
+            }
+        return {
+            "status": "failed",
+            "reason": "; ".join(vresult.failures),
+            "fix_directive": vresult.fix_directive
+        }
+
+    # Запускаем Obsidian асинхронно — пользователь не ждёт
+    asyncio.create_task(obsidian_process(
+        verify_result=vresult,
+        session_id=req.session_id,
+        output=req.result,
+        original_tz=req.original_tz or req.result[:200],
+        applied_stack=req.applied_stack,
+        cartridge=req.cartridge or {},
+        deviations=req.deviations or "",
+    ))
+
+    hook = await generate_hook_query(req.applied_stack)
     return {
         "status": "verified",
-        "action": {
-            "ideal": "record_confirmation",
-            "adapted": "analyze_delta",
-            "gap_filled": "record_new_knowledge"
-        }.get(req.solution_quality, "record_confirmation"),
+        "action": vresult.action,
+        "score": vresult.score,
+        "delta_type": vresult.delta_type,
         "message": "Результат верифицирован. Передай пользователю.",
-        "hook_query": "...или есть что-то ещё новее по этой теме?"
+        "hook_query": hook
     }
