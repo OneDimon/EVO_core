@@ -2,6 +2,7 @@
 import logging, asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from api.middleware.security import EVOSecurityMiddleware, check_required_secrets
 from api.routes import (handshake, concierge, query, step_done,
                          result, hook_reply, admin, patch_callback, mcp)
 
@@ -12,6 +13,7 @@ app = FastAPI(title="EVO-core API", version="0.3.0-phase2")
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
     allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(EVOSecurityMiddleware)
 
 for r in [handshake, concierge, query, step_done, result,
           hook_reply, admin, patch_callback, mcp]:
@@ -19,6 +21,7 @@ for r in [handshake, concierge, query, step_done, result,
 
 @app.on_event("startup")
 async def startup():
+    check_required_secrets()  # блокирует если секреты не заданы
     from core.config_manager import init_config_table
     await init_config_table()
     # Запускаем планировщик СОН
