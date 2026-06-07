@@ -13,8 +13,12 @@ from core.config_manager import get, set as cfg_set, get_all, CONFIG_SCHEMA
 router = APIRouter()
 
 def _check_admin(token: str = Header(None, alias="X-Admin-Token")):
-    secret = os.getenv("EVO_API_SECRET", "dev_admin_secret")
-    if token != secret:
+    secret = os.getenv("EVO_API_SECRET", "")
+    if not secret:
+        if os.getenv("EVO_ENV", "production") == "production":
+            raise HTTPException(500, "EVO_API_SECRET не задан")
+        secret = "dev_admin_secret"  # только development
+    if not token or token != secret:
         raise HTTPException(403, "Invalid admin token")
 
 class ConfigItem(BaseModel):
