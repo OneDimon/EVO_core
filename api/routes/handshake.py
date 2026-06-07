@@ -20,7 +20,11 @@ async def handshake(req: HandshakeRequest):
         raise HTTPException(400, "Flagship not ready")
     session_id = str(uuid.uuid4())
     # Генерируем сессионный HMAC ключ
-    secret = os.getenv("EVO_HMAC_SECRET", "dev_secret_32_chars_minimum_here")
+    secret = os.getenv("EVO_HMAC_SECRET", "")
+    if not secret and os.getenv("EVO_ENV", "production") == "production":
+        raise HTTPException(500, "EVO_HMAC_SECRET не задан в .env")
+    if not secret:
+        secret = "dev_secret_32_chars_minimum_here"  # только для development
     session_key = hmac.new(
         secret.encode(), session_id.encode(), hashlib.sha256
     ).hexdigest()
