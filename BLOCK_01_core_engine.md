@@ -288,7 +288,7 @@ def verify_response(payload: dict, secret_key: str) -> bool:
 | [БЛОК 02](BLOCK_02_language_library.md) Language Library | 🔵 Сшит | query→search, step_done→load_step, result→archive |
 | [БЛОК 03](BLOCK_03_shard_storage.md) Shard Storage | 🔵 Сшит | через librarian→shard_client |
 | [БЛОК 06](BLOCK_06_ymm_verifier.md) YMS-MMM | 🔴 Не сшит | — |
-| [БЛОК 07](BLOCK_07_immune_system.md) Immune System | 🔴 Не сшит | — |
+| [БЛОК 07](BLOCK_07_immune_system.md) Immune System | 🔵 Сшит | reanimate async + /patch_callback |
 
 ---
 
