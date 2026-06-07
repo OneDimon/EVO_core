@@ -10,6 +10,23 @@ from shards.zstd_codec import compress, decompress, parse_hyperlinks
 log = logging.getLogger("evo.shards")
 
 
+def _validate_path(path: str) -> str:
+    """Защита от path traversal. path должен начинаться с /evo/"""
+    if not path:
+        raise ValueError("Пустой путь к шарду")
+    # Нормализуем и проверяем
+    import posixpath
+    normalized = posixpath.normpath(path)
+    if ".." in normalized or not normalized.startswith("/evo/"):
+        raise ValueError(f"Недопустимый путь к шарду: {path}")
+    # Только безопасные символы
+    import re
+    if not re.match(r"^[/a-zA-Z0-9_.^{}\-]+$", normalized):
+        raise ValueError(f"Недопустимые символы в пути: {path}")
+    return normalized
+
+
+
 async def _provider() -> str:
     from core.config_manager import get
     return await get("SHARD_PROVIDER", "local")
@@ -39,6 +56,7 @@ async def read_cell_local(path: str) -> tuple[str, list]:
 
 async def write_cell(host: str, path: str, content: str, symbol_id: str = "") -> str:
     """Запись + автопришивка shard_link к символу в pgvector."""
+    path = _validate_path(path)
     prov = await _provider()
     data = compress(content)
     try:
