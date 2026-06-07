@@ -28,6 +28,20 @@ async def handshake(req: HandshakeRequest):
     session_key = hmac.new(
         secret.encode(), session_id.encode(), hashlib.sha256
     ).hexdigest()
+    # Сохранить сессию в БД
+    try:
+        from db.pg_client import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO evo_sessions (session_id, flagship_id, hmac_key)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (session_id) DO NOTHING
+            """, session_id, req.flagship_id, session_key)
+    except Exception as e:
+        import logging
+        logging.getLogger("evo.handshake").warning(f"Session save failed: {e}")
+
     return HandshakeResponse(
         status="synced",
         session_id=session_id,
