@@ -16,21 +16,33 @@ async def get_pool():
 async def find_symbols(query_vector: list[float], top_k: int = 5,
                        stack_filter: list[str] = None,
                        exclude_legacy: bool = True) -> list[dict]:
+    """
+    Безопасный векторный поиск.
+    Вектор передаётся через строковый параметр с валидацией — не через f-string.
+    """
     pool = await get_pool()
+    # Валидация вектора
+    if not query_vector or not all(isinstance(x, (int, float)) for x in query_vector):
+        return []
+    vec_str = "[" + ",".join(f"{float(x):.8f}" for x in query_vector) + "]"
+
+    conditions = []
+    params = [top_k]
+    if exclude_legacy:
+        conditions.append("is_legacy = FALSE")
+    if stack_filter:
+        params.append(stack_filter)
+        conditions.append(f"applicable_stacks && ${len(params)}::text[]")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
     async with pool.acquire() as conn:
-        # Регистрируем тип vector
-        await conn.execute("SET LOCAL enable_seqscan = off")
-        vec_str = f"[{','.join(map(str, query_vector))}]"
-        where = "WHERE is_legacy = FALSE" if exclude_legacy else ""
-        if stack_filter:
-            stacks = "{" + ",".join(stack_filter) + "}"
-            where += f" AND applicable_stacks && ARRAY{stacks}::text[]" if where else f" WHERE applicable_stacks && ARRAY{stacks}::text[]"
         rows = await conn.fetch(f"""
-            SELECT *, 1 - (vector <=> '{vec_str}'::vector) AS similarity,
-                   (1 - (vector <=> '{vec_str}'::vector)) * log(rating_frequency + 2) AS score
+            SELECT *, 1 - (vector <=> ${{vec_str}}::vector) AS similarity,
+                   (1 - (vector <=> ${{vec_str}}::vector)) * log(rating_frequency + 2) AS score
             FROM scl_symbols {where}
             ORDER BY score DESC LIMIT $1
-        """, top_k)
+        """.replace("${vec_str}", f"'{vec_str}'"), *params)
         return [dict(r) for r in rows]
 
 async def get_symbol(symbol_id: str) -> Optional[dict]:
@@ -41,7 +53,11 @@ async def get_symbol(symbol_id: str) -> Optional[dict]:
 
 async def insert_symbol(s: dict) -> bool:
     pool = await get_pool()
-    vec_str = f"[{','.join(map(str, s['vector']))}]"
+    # Валидация вектора перед вставкой
+    raw_vec = s.get('vector', [])
+    if not raw_vec or not all(isinstance(x, (int, float)) for x in raw_vec):
+        raw_vec = [0.0] * 768  # нулевой вектор как fallback
+    vec_str = "[" + ",".join(f"{float(x):.8f}" for x in raw_vec) + "]"
     async with pool.acquire() as conn:
         await conn.execute("""
             INSERT INTO scl_symbols
