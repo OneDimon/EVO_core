@@ -67,3 +67,56 @@ async def test_shards(token: str = Header(None, alias="X-Admin-Token")):
         return {"status": "ok" if ok else "fail", "path": final, "content": content}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ── Управление пользователями и API ключами ───────────────────────────────────
+
+class CreateUserReq(BaseModel):
+    email: str
+    plan: str = "free"
+
+@router.post("/admin/users")
+async def create_user(req: CreateUserReq,
+                      token: str = Header(None, alias="X-Admin-Token")):
+    """Создать пользователя и получить API ключ."""
+    _check_admin(token)
+    from db.users import create_user as _create
+    user = await _create(req.email, req.plan)
+    # Не возвращаем полный API ключ — только маскированный
+    key = user['api_key']
+    user['api_key_masked'] = key[:8] + "****" + key[-4:]
+    user['api_key_full'] = key  # только в ответе на создание
+    return user
+
+@router.post("/admin/users/{user_id}/rotate-key")
+async def rotate_user_key(user_id: str,
+                           token: str = Header(None, alias="X-Admin-Token")):
+    """Ротация API ключа пользователя."""
+    _check_admin(token)
+    from db.users import rotate_api_key
+    new_key = await rotate_api_key(user_id)
+    return {"status": "ok", "new_key": new_key[:8] + "****" + new_key[-4:],
+            "new_key_full": new_key}
+
+@router.delete("/admin/users/{user_id}")
+async def deactivate_user(user_id: str,
+                           token: str = Header(None, alias="X-Admin-Token")):
+    """Деактивировать пользователя."""
+    _check_admin(token)
+    from db.users import deactivate_user as _deactivate
+    await _deactivate(user_id)
+    return {"status": "deactivated", "user_id": user_id}
+
+@router.get("/admin/audit-log")
+async def get_audit_log(limit: int = 50,
+                         token: str = Header(None, alias="X-Admin-Token")):
+    """Audit log всех изменений конфигов."""
+    _check_admin(token)
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT ts, action, actor, target, value_hash, ip
+            FROM evo_audit_log ORDER BY ts DESC LIMIT $1
+        """, limit)
+    return {"audit_log": [dict(r) for r in rows]}
