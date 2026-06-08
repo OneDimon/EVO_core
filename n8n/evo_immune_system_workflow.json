@@ -1,0 +1,55 @@
+{
+  "name": "EVO-core Immune System — Reanimator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "evo-reanimate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "evo-reanimate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// EVO-core Immune System — Auto-Reanimator v2.0\n// Правила: BLOCK_07_immune_system.md\n// Один Code node, без ветвлений, fallback Gemini→Ollama\n\nconst item = items[0].json;\nconst {\n  taskDescription = '',\n  baseInstructions = '',\n  faultyOutput = '',\n  errorLog = '',\n  callbackUrl = '',\n  sessionId = ''\n} = item;\n\nconst prompt = `[EVO-CORE IMMUNE SYSTEM]\nTASK: ${taskDescription.slice(0,400)}\nBASE_INSTRUCTIONS: ${baseInstructions.slice(0,400)}\nFAULTY_OUTPUT: ${faultyOutput.slice(0,400)}\nERROR_LOG: ${errorLog.slice(0,300)}\n\nFind the EXACT point of failure.\nReturn a ZERO-FLUFF surgical code patch ONLY. No explanations.`;\n\n// Получаем конфиг из переменных n8n\nconst geminiKey = $env.GEMINI_API_KEY || '';\nconst ollamaHost = $env.OLLAMA_HOST || 'http://localhost:11434';\nconst evoCallbackSecret = $env.EVO_API_SECRET || '';\n\n// Цепочка попыток: Gemini x3 (backoff) → Ollama\nconst attempts = [\n  {\n    name: 'gemini-2.5-pro attempt 1',\n    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${geminiKey}`,\n    body: { contents: [{ parts: [{ text: prompt }] }] },\n    parse: (r) => r.candidates?.[0]?.content?.parts?.[0]?.text,\n    delay: 0\n  },\n  {\n    name: 'gemini-2.5-pro attempt 2',\n    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${geminiKey}`,\n    body: { contents: [{ parts: [{ text: prompt }] }] },\n    parse: (r) => r.candidates?.[0]?.content?.parts?.[0]?.text,\n    delay: 5000\n  },\n  {\n    name: 'gemini-2.0-flash fallback',\n    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,\n    body: { contents: [{ parts: [{ text: prompt }] }] },\n    parse: (r) => r.candidates?.[0]?.content?.parts?.[0]?.text,\n    delay: 15000\n  },\n  {\n    name: 'ollama local fallback',\n    url: `${ollamaHost}/api/chat`,\n    body: { model: 'llama3', messages: [{ role: 'user', content: prompt }], stream: false },\n    parse: (r) => r.message?.content,\n    delay: 45000\n  }\n];\n\nlet patch = null;\nlet usedProvider = null;\nlet lastError = null;\n\nfor (const attempt of attempts) {\n  if (attempt.delay > 0) {\n    await new Promise(r => setTimeout(r, attempt.delay));\n  }\n  try {\n    const response = await this.helpers.request({\n      method: 'POST',\n      url: attempt.url,\n      headers: { 'Content-Type': 'application/json' },\n      body: attempt.body,\n      json: true,\n      timeout: 30000\n    });\n    const result = attempt.parse(response);\n    if (result && result.trim().length > 10) {\n      patch = result.trim();\n      usedProvider = attempt.name;\n      break;\n    }\n  } catch (e) {\n    lastError = e.message;\n    console.log(`[Immune] ${attempt.name} failed: ${e.message}`);\n  }\n}\n\nif (!patch) {\n  // Все попытки провалились — отправить уведомление Архитектору\n  const failPayload = {\n    status: 'reanimate_failed',\n    sessionId,\n    error: lastError,\n    message: 'Все провайдеры недоступны. Требуется вмешательство Архитектора.'\n  };\n  if (callbackUrl) {\n    await this.helpers.request({\n      method: 'POST', url: callbackUrl,\n      headers: { 'Content-Type': 'application/json', 'X-API-Key': evoCallbackSecret },\n      body: failPayload, json: true\n    });\n  }\n  return [{ json: { success: false, error: lastError } }];\n}\n\n// Отправить патч в callback\nif (callbackUrl) {\n  await this.helpers.request({\n    method: 'POST',\n    url: callbackUrl,\n    headers: {\n      'Content-Type': 'application/json',\n      'X-API-Key': evoCallbackSecret\n    },\n    body: {\n      status: 'reanimated',\n      patch,\n      sessionId,\n      provider: usedProvider\n    },\n    json: true,\n    timeout: 10000\n  });\n}\n\nreturn [{\n  json: {\n    success: true,\n    provider: usedProvider,\n    patch_preview: patch.slice(0, 200) + '...'\n  }\n}];"
+      },
+      "id": "immune-code",
+      "name": "Immune Reanimator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "response-node",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Immune Reanimator", "type": "main", "index": 0}]]
+    },
+    "Immune Reanimator": {
+      "main": [[{"node": "Response", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "tags": ["evo-core", "immune-system", "block-07"]
+}
