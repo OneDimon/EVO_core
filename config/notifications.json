@@ -1,0 +1,29 @@
+{
+  "telegram": {
+    "bot_token_env": "TG_BOT_TOKEN",
+    "admin_chat_id_env": "TG_ADMIN_CHAT_ID",
+    "webhook_secret_env": "TG_WEBHOOK_SECRET",
+    "enabled": true,
+    "note": "Заполни TG_BOT_TOKEN и TG_ADMIN_CHAT_ID через Admin UI или .env"
+  },
+  "admin_panel": {
+    "endpoint": "/admin/api/notifications",
+    "enabled": true
+  },
+  "protected_zones": [
+    "scl_symbols",
+    "config/",
+    "prompts/",
+    "SCL_FRACTAL_PROTOCOL.md",
+    "LOCAL_MODEL_INSTRUCTIONS.md",
+    "migrations/",
+    "core/crypto.py",
+    "api/middleware/security.py"
+  ],
+  "setup_instructions": {
+    "step1": "Внести TG_BOT_TOKEN через: POST /api/v1/admin/config",
+    "step2": "Внести TG_ADMIN_CHAT_ID через: POST /api/v1/admin/config",
+    "step3": "Настроить webhook: POST /api/v1/tg/setup {server_url: 'https://your-server.com'}",
+    "step4": "Отвечать на уведомления: 1, 2 или 3 в Telegram"
+  }
+}
