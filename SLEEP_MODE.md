@@ -1,7 +1,8 @@
 # SLEEP_MODE.md — Протокол «Сон» ядра EVO-core
 
 > **Назначение:** Автоматическое окно внутренней работы в часы минимальной нагрузки.
-> Версия: 1.0 | 2026-06-03 | YMS-MMM ACTIVE
+> Версия: 1.1 | 2026-06-03 | YMS-MMM ACTIVE
+> Обновление: добавлен Канал 1 — автонаполнение ядра (knowledge_collector)
 
 ---
 
@@ -64,6 +65,13 @@ async def calculate_sleep_window(days: int = 7) -> tuple[int, int]:
    - Сверка: все confirmed_by >= 3 имеют соответствующую лигатуру
 
 4. КРИТИЧЕСКИЕ ИЗМЕНЕНИЯ → УВЕДОМЛЕНИЕ (см. ниже)
+
+5. АВТОНАПОЛНЕНИЕ ЯДРА (Канал 1)
+   - Скан белых зон (макро-корни с < 3 символами, all_legacy зоны)
+   - Поиск в GitHub/npm/PyPI/n8n/официальных источниках
+   - Оценка по рейтингу и актуальности
+   - Запись через archivist._new_symbol() — тот же путь что gap_filled
+   - Реализация: core/knowledge_collector.py
 ```
 
 ---
@@ -171,8 +179,6 @@ async def handle_architect_response(choice: int, context: dict):
   ]
 }
 ```
-
----
 
 ---
 
