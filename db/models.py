@@ -51,6 +51,12 @@ class SCLSymbol(BaseModel):
     # Фоновая ассимиляция
     hypothesis: bool = False
 
+    # Канал 1 — автосбор (knowledge_collector)
+    source_url: Optional[str] = None        # URL источника
+    source_rating: int = 0                  # stars/downloads
+    source_type: Optional[str] = None       # github|npm|pypi|n8n|official|cli_plugin
+    auto_collected: bool = False             # True = собрано в режиме СОН
+
     version_ts: Optional[datetime] = None
 
 
