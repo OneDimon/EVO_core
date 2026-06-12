@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS scl_symbols (
     superseded_by     TEXT,
     supersedes        TEXT,
     hypothesis        BOOLEAN DEFAULT FALSE,
+    source_url        TEXT,                       -- URL источника (Канал 1)
+    source_rating     INTEGER DEFAULT 0,           -- stars/downloads источника
+    source_type       TEXT,                        -- github|npm|pypi|n8n|official|cli_plugin
+    auto_collected    BOOLEAN DEFAULT FALSE,        -- собрано автономно (Канал 1)
     version_ts        TIMESTAMPTZ DEFAULT NOW()
 );
 
