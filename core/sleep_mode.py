@@ -112,6 +112,7 @@ async def _sleep_cycle():
         ("Проверка гипотез", _check_hypotheses),
         ("Апдейт графа знаний", _update_graph),
         ("Статистика", _generate_stats),
+        ("Автонаполнение ядра (Канал 1)", _auto_fill_knowledge),
     ]
 
     for name, fn in tasks:
@@ -255,6 +256,21 @@ def _format_notification(zone: str, problem: str, options: list[dict]) -> str:
         lines.append(f"   <i>Последствия: {opt['consequences']}</i>")
     lines.append("\nОтветь: 1, 2 или 3")
     return "\n".join(lines)
+
+
+
+async def _auto_fill_knowledge():
+    """
+    Задача 5 цикла СОН — Канал 1 автонаполнения ядра.
+    Сканирует белые зоны и забирает знания из внешних источников.
+    Реализация: core/knowledge_collector.py
+    Спецификация: SLEEP_MODE.md раздел "Автонаполнение ядра"
+    """
+    try:
+        from core.knowledge_collector import collect_and_fill
+        await collect_and_fill()
+    except Exception as e:
+        log.error(f"[Sleep] Автонаполнение ошибка: {e}")
 
 
 async def apply_architect_choice(notif_id: int, choice: int):
