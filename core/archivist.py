@@ -128,8 +128,17 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
 
 
 async def _new_symbol(output: str, applied_stack: list[str],
-                       vector: list[float], original_tz: str):
-    """Новый символ с нуля (gap_filled)."""
+                       vector: list[float], original_tz: str,
+                       source_url: str = None, source_rating: int = 0,
+                       source_type: str = None, auto_collected: bool = False):
+    """Новый символ с нуля (gap_filled / Канал 1 auto_collected).
+    
+    Параметры Канала 1 (knowledge_collector):
+        source_url      — URL откуда взято знание
+        source_rating   — stars/downloads источника
+        source_type     — github|npm|pypi|n8n|official|cli_plugin
+        auto_collected  — True если собрано в режиме СОН (Канал 1)
+    """
     root = await ai_router.classify(output[:300], "macro_root")
     root = root.strip()[:2]
     symbol_id = await _generate_id(root, "new", "new")
@@ -144,8 +153,14 @@ async def _new_symbol(output: str, applied_stack: list[str],
         "subsection": "new",
         "applicable_stacks": applied_stack,
         "shard_host": "", "shard_path": shard_path,
+        # Канал 1
+        "source_url": source_url,
+        "source_rating": source_rating,
+        "source_type": source_type,
+        "auto_collected": auto_collected,
     })
-    log.info(f"[Новый] Created {symbol_id}")
+    log.info(f"[{'Канал1' if auto_collected else 'Новый'}] Created {symbol_id}"
+             + (f" src={source_url}" if source_url else ""))
 
 
 async def _generate_id(science: str, section: str, subsection: str) -> str:
