@@ -215,6 +215,7 @@ EVO_ENV=development python tests/test_full.py     # 20 тестов полный
 | [FLAGSHIP_SYSTEM_PROMPT.md](FLAGSHIP_SYSTEM_PROMPT.md) | Системный промпт флагмана |
 | [LOCAL_MODEL_INSTRUCTIONS.md](LOCAL_MODEL_INSTRUCTIONS.md) | Инструкции локальной модели-хранителя |
 | [SLEEP_MODE.md](SLEEP_MODE.md) | Режим СОН: фоновая работа + автонаполнение |
+| [AI_ONBOARDING.md](AI_ONBOARDING.md) | **Читай первым** — карта проекта, схема, статусы, деплой |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Полный технический план v3.0 (Фазы 0–4 ✅, Фаза 3 сайт 🟡) |
 
 ---
