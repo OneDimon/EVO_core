@@ -64,8 +64,11 @@ async def insert_symbol(s: dict) -> bool:
             (id,label,vector,science,section,subsection,confirmed_by,confirmed_in,
              evolved_from,evolution_note,last_updated,shard_host,shard_path,shard_mirror,
              legacy_symbols,applicable_stacks,hyperlinks,is_legacy,superseded_by,
-             supersedes,hypothesis,version_ts)
-            VALUES($1,$2,$3::vector,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW())
+             supersedes,hypothesis,
+             source_url,source_rating,source_type,auto_collected,
+             version_ts)
+            VALUES($1,$2,$3::vector,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+                   $21,$22,$23,$24,NOW())
             ON CONFLICT (id) DO NOTHING
         """, s['id'], s['label'], vec_str, s['science'], s['section'], s['subsection'],
             s.get('confirmed_by',1), s.get('confirmed_in',[]),
@@ -73,7 +76,9 @@ async def insert_symbol(s: dict) -> bool:
             s.get('shard_host',''), s.get('shard_path',''), s.get('shard_mirror'),
             s.get('legacy_symbols',[]), s.get('applicable_stacks',[]),
             s.get('hyperlinks',[]), s.get('is_legacy',False),
-            s.get('superseded_by'), s.get('supersedes'), s.get('hypothesis',False)
+            s.get('superseded_by'), s.get('supersedes'), s.get('hypothesis',False),
+            s.get('source_url'), s.get('source_rating',0),
+            s.get('source_type'), s.get('auto_collected',False)
         )
     return True
 
