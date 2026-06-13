@@ -96,6 +96,8 @@
 | 05 MCP Server | 🔵 Сшит и проверен | Фаза 2 | `core/mcp_server.py` |
 | 06 YMS-MMM | 🔵 Сшит и проверен | Фаза 1 | `core/verifier.py` + `core/obsidian.py` |
 | 07 Immune System | 🔵 Сшит и проверен | Фаза 2 | `core/immune_system.py` + `n8n/` |
+| Канал 1 (СОН) | 🔵 Сшит и проверен | Фаза 4 | `core/knowledge_collector.py` + `core/sleep_mode.py` |
+| Безопасность | 🔵 Сшит и проверен | Фаза 4 | `api/middleware/security.py` + `core/crypto.py` + `db/users.py` |
 
 **Статусы:** 🔴 Не начат / 🟡 В работе / 🟢 Готов / 🔵 Сшит и проверен
 
@@ -126,6 +128,19 @@
 - HMAC подпись ответов ядра
 - Path traversal защита на шардах
 - Audit log, управление пользователями
+
+### Фаза 4 — Безопасность + Автонаполнение ✅
+- `core/knowledge_collector.py` — Канал 1 автонаполнение в режиме СОН
+- `core/archivist.py::_new_symbol` — поля source_url/rating/type/auto_collected
+- `db/pg_client.py::insert_symbol` — INSERT с полями Канала 1 ($21–$24)
+- `db/migrations/004_channel1_fields.sql` — ALTER TABLE для existing БД
+- `docker-compose.yml` — migration 004 в init-последовательности
+
+### Фаза 3 — Сайт + Запуск 🟡 В РАБОТЕ
+- [ ] Публичный сайт `evo-core.io` — Dark High-Tech
+- [ ] 3D-глобус знаний (Three.js + GeoIP)
+- [ ] Публикация в Anthropic MCP Registry
+- [ ] Бесплатный период СТАРТ 🚀
 
 ---
 
@@ -200,9 +215,10 @@ EVO_ENV=development python tests/test_full.py     # 20 тестов полный
 | [FLAGSHIP_SYSTEM_PROMPT.md](FLAGSHIP_SYSTEM_PROMPT.md) | Системный промпт флагмана |
 | [LOCAL_MODEL_INSTRUCTIONS.md](LOCAL_MODEL_INSTRUCTIONS.md) | Инструкции локальной модели-хранителя |
 | [SLEEP_MODE.md](SLEEP_MODE.md) | Режим СОН: фоновая работа + автонаполнение |
-| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Полный технический план v2.0 |
+| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Полный технический план v3.0 (Фазы 0–4 ✅, Фаза 3 сайт 🟡) |
 
 ---
 
-*Версия: 2.0 | 2026-06-03 | Архитектор: @OneDimon*
+*Версия: 3.0 | 2026-06-13 | Архитектор: @OneDimon*
+*Фазы 0–4 выполнены. Фаза 3 (сайт) — в работе.*
 *YMS-MMM ACTIVE*
