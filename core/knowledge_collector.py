@@ -268,7 +268,7 @@ async def _ingest_candidate(candidate: dict, gap: dict) -> bool:
         shard_path = f"/evo/{science[:3].upper()}/{symbol_id}.zst"
         await write_cell("", shard_path, body, symbol_id=symbol_id)
 
-        # Запись в pgvector
+        # Запись в pgvector — все поля включая Канал 1
         await insert_symbol({
             "id": symbol_id,
             "label": label,
@@ -285,6 +285,11 @@ async def _ingest_candidate(candidate: dict, gap: dict) -> bool:
                 f"Канал 1 (авто): источник={candidate.get('source_url','N/A')}, "
                 f"рейтинг={candidate.get('source_rating',0)}"
             ),
+            # Поля Канала 1 — обязательны для трассировки автосбора
+            "source_url":      candidate.get("source_url"),
+            "source_rating":   candidate.get("source_rating", 0),
+            "source_type":     candidate.get("source_type"),
+            "auto_collected":  True,    # всегда True — знание от knowledge_collector
         })
 
         log.info(f"[Collector] ✓ Записан: {symbol_id} — {label[:60]}")
