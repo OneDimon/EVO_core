@@ -155,6 +155,7 @@
 | Файл | Содержит |
 |------|---------|
 | `config/ai_router.json` | Primary/fallback модели + backoff 5s/15s/45s |
+| `config/deployment.json` | **Заполнить перед деплоем** — хосты, порты, env-переменные |
 | `config/deployment.json` | Хосты шардов, Redis, PG, порты |
 | `config/notifications.json` | Telegram + admin webhook + protected zones |
 | `n8n/evo_immune_system_workflow.json` | n8n workflow реаниматора |
@@ -279,8 +280,10 @@ docker-compose exec api python scripts/bootstrap.py
 curl http://localhost:8000/health
 curl http://localhost:8000/docs  # Swagger UI
 
-# 6. Проверка тестов
-docker-compose exec api pytest tests/ -v
+# 6. Интеграционные тесты (требуют запущенный стек)
+docker-compose exec api python tests/test_phase0.py  # конвейер флагман → картридж
+docker-compose exec api python tests/test_phase1.py  # YMS-MMM, Obsidian, Immune, MCP, Admin
+docker-compose exec api python tests/test_full.py    # полный e2e
 
 # 7. Первый флагман
 # В Claude Code / Cursor — открыть репо. AGENTS.md загрузится автоматически.
