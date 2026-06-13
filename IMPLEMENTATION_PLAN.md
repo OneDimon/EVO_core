@@ -590,6 +590,11 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 - [x] Реализация: `core/knowledge_collector.py`
 - [x] Интеграция в `core/sleep_mode.py::_sleep_cycle()` задача 5
 - [x] Спецификация: `SLEEP_MODE.md` раздел "Автонаполнение"
+- [x] `db/pg_client.py::insert_symbol` — поля Канала 1 в INSERT ($21–$24)
+- [x] `core/archivist.py::_new_symbol` — принимает source_url/rating/type/auto_collected
+- [x] `core/knowledge_collector.py::_ingest_candidate` — передаёт поля в insert_symbol
+- [x] `db/migrations/004_channel1_fields.sql` — ALTER TABLE для существующих БД
+- [x] `docker-compose.yml` — migration 004 добавлена в init-последовательность
 
 ## ПРОТОКОЛ ЦЕЛОСТНОСТИ
 
