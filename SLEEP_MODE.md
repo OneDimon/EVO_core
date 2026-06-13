@@ -317,4 +317,5 @@ async def _auto_fill_knowledge():
 ```
 
 
-*Версия: 1.1 | 2026-06-03 | Архитектор: @OneDimon*
+*Версия: 1.1 | 2026-06-13 | Архитектор: @OneDimon*
+*YMS-MMM ACTIVE*
