@@ -39,8 +39,9 @@ evo-core/
 │   ├── cli_layer.py            ✅ скелетонизатор БЛОК 04
 │   ├── mcp_server.py           ✅ JSON-RPC БЛОК 05
 │   ├── config_manager.py       ✅ шифрование + audit log
-│   ├── sleep_mode.py           ✅ СОН + ТГ + APScheduler
-│   └── crypto.py               ✅ AES шифрование
+│   ├── sleep_mode.py           ✅ СОН + ТГ + APScheduler + задача 5
+│   ├── crypto.py               ✅ AES шифрование
+│   └── knowledge_collector.py  ✅ Канал 1 — автонаполнение в режиме СОН
 │
 ├── db/
 │   ├── models.py               ✅ SCLSymbol полная схема
@@ -50,7 +51,8 @@ evo-core/
 │   └── migrations/
 │       ├── 001_init.sql        ✅ scl_symbols + 9 индексов
 │       ├── 002_config.sql      ✅ evo_config
-│       └── 003_users_security.sql ✅ users + sessions + audit + pgcrypto
+│       ├── 003_users_security.sql ✅ users + sessions + audit + pgcrypto
+│       └── 004_channel1_fields.sql ✅ source_url/rating/type/auto_collected
 │
 ├── shards/
 │   ├── zstd_codec.py           ✅ compress + гиперлинки новый формат
@@ -102,6 +104,7 @@ evo-core/
 | **AI Router** | core/ai_router.py | 🔵 Готов | все |
 | **Config+Admin** | config_manager+admin+admin_ui | 🔵 Готов | все |
 | **Sleep Mode** | core/sleep_mode.py | 🔵 Готов | APScheduler |
+| **Канал 1** | core/knowledge_collector.py | 🔵 Готов | sleep_mode задача 5 → archivist → pg_client |
 | **Security** | middleware/security.py + crypto | 🔵 Готов | все |
 
 ---
@@ -140,6 +143,9 @@ all ──config──────→ config_manager → evo_config [enc] ✅
 security ─────────→ middleware → evo_users+sessions   ✅
 tg ───────────────→ tg_webhook → apply_choice         ✅
 sleep ──notify────→ ТГ Bot + admin                    ✅
+sleep ──task5─────→ knowledge_collector.collect_and_fill ✅
+kc ───archivist───→ _new_symbol(auto_collected=True)    ✅
+kc ───pg_client───→ insert_symbol($21–$24 Канал 1)      ✅
 ```
 
 ---
@@ -183,9 +189,13 @@ EVO_ENV=development python tests/test_full.py  # 20 тестов
 
 | Задача | Приоритет | Описание |
 |--------|-----------|---------|
+| Публичный сайт evo-core.io | 🔴 Высокий | Dark High-Tech, Hero + Dashboard |
+| 3D-глобус знаний | 🔴 Высокий | Three.js + GeoIP пульсация узлов |
+| MCP Registry публикация | 🔴 Высокий | Anthropic MCP Registry |
+| Бесплатный период СТАРТ | 🔴 Высокий | Вирусный запуск |
 | Google Drive OAuth2 | 🟡 Средний | Полный flow, сейчас базовый HTTP |
 | Cloudflare R2 AWS Sig v4 | 🟡 Средний | Полная реализация |
-| Граф знаний Three.js | 🟢 Низкий | Визуализация в Admin UI |
+| Граф знаний Admin UI | 🟢 Низкий | Three.js визуализация в Admin панели |
 | Документация API | 🟢 Низкий | Swagger автогенерация готова (/docs) |
 
 ---
@@ -200,4 +210,4 @@ EVO_ENV=development python tests/test_full.py  # 20 тестов
 ```
 
 ---
-*v5.0 | 2026-06-03 | Все блоки + безопасность + тесты. Готово к деплою.*
+*v6.0 | 2026-06-13 | +Канал 1 (knowledge_collector) + migration 004 + Фаза 3 (сайт) в работе.*
