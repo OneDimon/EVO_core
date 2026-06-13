@@ -680,7 +680,79 @@ ZSTD НА ЛЕТУ В ПАМЯТИ → ШАРД (асинхронно)
 Фоновая работа не изменяет существующие символы. Только пометки и гипотезы.
 Изменения — только через YMS-MMM. Цикл останавливается при нагрузке > 20%.
 
+
 ---
 
-*Версия: 3.1 | 2026-06-03 | Архитектор: @OneDimon*
+## 19. Два канала наполнения Языка-Библиотеки
+
+Библиотека пополняется двумя независимыми каналами. Оба используют одинаковый
+путь записи через `archivist._new_symbol()` → similarity check → zstd → шард + pgvector.
+
+### Канал 1 — Автономный (режим СОН)
+
+Ядро само сканирует белые зоны и заполняет их из внешних источников.
+Запускается задачей 5 в `core/sleep_mode.py::_sleep_cycle()`.
+Реализация: `core/knowledge_collector.py::collect_and_fill()`.
+
+```
+Белые зоны (приоритет по убыванию):
+  1. zero_symbols_in_root  — макро-корень с 0 символами
+  2. requested_but_missing — стек запрашивался, символа нет
+  3. all_legacy_zone       — весь раздел из is_legacy символов
+  4. unconfirmed_singles   — confirmed_by=1 без лигатур
+  5. trending_expansion    — новые технологии в трендах
+
+Источники (приоритет):
+  a) GitHub Trending — stars > 1000, актуальные коммиты
+  b) Официальная документация инструментов
+  c) npm/PyPI/n8n Templates — по рейтингу
+  d) CLI-плагины Cursor, Claude Code, VS Code AI
+  e) Anthropic/OpenAI/Google официальные релизы
+
+Метаданные источника (обязательны для Канала 1):
+  source_url:     "https://github.com/owner/repo"
+  source_rating:  4200  (stars/downloads)
+  source_type:    "github|npm|pypi|n8n|official|cli_plugin"
+  auto_collected: true
+
+confirmed_by начинается с 1 — растёт при реальном применении флагманом.
+```
+
+### Канал 2 — Через флагмана (рабочий режим)
+
+Флагман решил задачу пользователя → `result workability=true` →
+verifier (YMS-MMM) → obsidian (Тип А/Б) → archivist → запись.
+
+```
+solution_quality = "gap_filled" → новый символ с нуля
+solution_quality = "adapted"    → Тип А или Б через obsidian
+solution_quality = "ideal"      → R_f += 1, applicable_stacks дополнить
+
+confirmed_by начинается с 1 — растёт при подтверждениях в смежных областях.
+```
+
+### Общее правило для обоих каналов
+
+```
+ЗАПРЕЩЕНО создавать дубли:
+  similarity check > 0.95 перед любой записью → пропустить
+
+ОБЯЗАТЕЛЬНО для Канала 1:
+  auto_collected = True
+  evolution_note = "Канал 1: источник=[URL], рейтинг=[N]"
+
+ОБЯЗАТЕЛЬНО для Канала 2:
+  workability_confirmed = True (подтверждение от флагмана)
+  solution_quality указан точно
+
+ОБА канала подчиняются незыблемым правилам п.17:
+  R_f только инкрементируется, legacy сохраняется,
+  хронология неприкосновенна, лигатура только при confirmed_by >= 3
+```
+
+
+---
+
+*Версия: 3.2 | 2026-06-13 | Архитектор: @OneDimon*
+*Обновление: добавлен раздел 19 — два канала наполнения Языка-Библиотеки*
 *YMS-MMM ACTIVE*
