@@ -98,6 +98,9 @@
 | 07 Immune System | 🔵 Сшит и проверен | Фаза 2 | `core/immune_system.py` + `n8n/` |
 | Канал 1 (СОН) | 🔵 Сшит и проверен | Фаза 4 | `core/knowledge_collector.py` + `core/sleep_mode.py` |
 | Безопасность | 🔵 Сшит и проверен | Фаза 4 | `api/middleware/security.py` + `core/crypto.py` + `db/users.py` |
+| Публичный сайт | 🟡 Готов, нужен деплой | Фаза 3 | `site/index.html` (Dark High-Tech + Three.js глобус) |
+| nginx + docker | 🟡 Готов, нужен деплой | Фаза 3 | `site/nginx.conf` + `docker-compose.yml` site-сервис |
+| MCP Registry | 🟡 Манифест готов | Фаза 3 | `site/mcp-manifest.json` — нужен публичный HTTPS |
 
 **Статусы:** 🔴 Не начат / 🟡 В работе / 🟢 Готов / 🔵 Сшит и проверен
 
@@ -137,9 +140,12 @@
 - `docker-compose.yml` — migration 004 в init-последовательности
 
 ### Фаза 3 — Сайт + Запуск 🟡 В РАБОТЕ
-- [ ] Публичный сайт `evo-core.io` — Dark High-Tech
-- [ ] 3D-глобус знаний (Three.js + GeoIP)
-- [ ] Публикация в Anthropic MCP Registry
+- [x] Публичный сайт `evo-core.io` — `site/index.html` Dark High-Tech + Three.js глобус
+- [x] 3D-глобус знаний — Two.js в `site/index.html` (узлы=символы, пульсация=R_f)
+- [x] nginx конфиг `site/nginx.conf` + docker-compose site сервис
+- [x] MCP Registry манифест `site/mcp-manifest.json`
+- [ ] Деплой на VPS (домен evo-core.io + SSL + .env + bootstrap.py)
+- [ ] Регистрация в Anthropic MCP Registry (нужен публичный HTTPS)
 - [ ] Бесплатный период СТАРТ 🚀
 
 ---
@@ -216,10 +222,12 @@ EVO_ENV=development python tests/test_full.py     # 20 тестов полный
 | [LOCAL_MODEL_INSTRUCTIONS.md](LOCAL_MODEL_INSTRUCTIONS.md) | Инструкции локальной модели-хранителя |
 | [SLEEP_MODE.md](SLEEP_MODE.md) | Режим СОН: фоновая работа + автонаполнение |
 | [AI_ONBOARDING.md](AI_ONBOARDING.md) | **Читай первым** — карта проекта, схема, статусы, деплой |
-| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Полный технический план v3.0 (Фазы 0–4 ✅, Фаза 3 сайт 🟡) |
+| [site/index.html](site/index.html) | Публичный сайт Dark High-Tech + Three.js глобус знаний |
+| [site/mcp-manifest.json](site/mcp-manifest.json) | Манифест для Anthropic MCP Registry |
+| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Полный технический план v3.1 (Фазы 0–4 ✅, Фаза 3 сайт 🟡 деплой 🔴) |
 
 ---
 
-*Версия: 3.0 | 2026-06-13 | Архитектор: @OneDimon*
-*Фазы 0–4 выполнены. Фаза 3 (сайт) — в работе.*
+*Версия: 3.1 | 2026-06-13 | Архитектор: @OneDimon*
+*Фазы 0–4 выполнены. Фаза 3: сайт+глобус+MCP манифест ✅, деплой 🔴*
 *YMS-MMM ACTIVE*
