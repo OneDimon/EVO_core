@@ -42,6 +42,10 @@ evo-core/
 │   ├── sleep_mode.py           ✅ СОН + ТГ + APScheduler + задача 5
 │   ├── crypto.py               ✅ AES шифрование
 │   └── knowledge_collector.py  ✅ Канал 1 — автонаполнение в режиме СОН
+├── site/
+│   ├── index.html              ✅ Публичный сайт (Dark High-Tech + Three.js глобус)
+│   ├── nginx.conf              ✅ Раздача статики + proxy /api, /mcp, /docs
+│   └── mcp-manifest.json       ✅ Манифест для Anthropic MCP Registry
 │
 ├── db/
 │   ├── models.py               ✅ SCLSymbol полная схема
@@ -189,9 +193,9 @@ EVO_ENV=development python tests/test_full.py  # 20 тестов
 
 | Задача | Приоритет | Описание |
 |--------|-----------|---------|
-| Публичный сайт evo-core.io | 🔴 Высокий | Dark High-Tech, Hero + Dashboard |
-| 3D-глобус знаний | 🔴 Высокий | Three.js + GeoIP пульсация узлов |
-| MCP Registry публикация | 🔴 Высокий | Anthropic MCP Registry |
+| Публичный сайт evo-core.io | 🔵 Готов | `site/index.html` — деплой 🔴 |
+| 3D-глобус знаний | 🔵 Готов | `site/index.html` Three.js — деплой 🔴 |
+| MCP Registry публикация | 🟡 Манифест готов | `site/mcp-manifest.json` — нужен публичный HTTPS |
 | Бесплатный период СТАРТ | 🔴 Высокий | Вирусный запуск |
 | Google Drive OAuth2 | 🟡 Средний | Полный flow, сейчас базовый HTTP |
 | Cloudflare R2 AWS Sig v4 | 🟡 Средний | Полная реализация |
@@ -210,4 +214,4 @@ EVO_ENV=development python tests/test_full.py  # 20 тестов
 ```
 
 ---
-*v6.0 | 2026-06-13 | +Канал 1 (knowledge_collector) + migration 004 + Фаза 3 (сайт) в работе.*
+*v7.0 | 2026-06-13 | +Канал 1 (knowledge_collector) + migration 004 + Фаза 3 (сайт) в работе.*
