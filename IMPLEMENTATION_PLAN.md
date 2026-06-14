@@ -562,10 +562,13 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 - [x] Admin UI (`admin_ui.html` — React, конфиги + шарды + TG + audit log)
 - [x] Система ключей — пользователи + API keys (`db/users.py` + `api/routes/admin.py`)
 - [x] Telegram webhook — приём ответов Архитектора (`api/routes/tg_webhook.py`)
-- [ ] Публичный сайт Dark High-Tech (evo-core.io)
-- [ ] 3D-глобус знаний (Three.js + GeoIP)
-- [ ] Публикация в Anthropic MCP Registry
-- [ ] Бесплатный период СТАРТ 🚀
+- [x] Публичный сайт Dark High-Tech (`site/index.html` — Hero, конвейер, Compare, 3D-глобус, Pricing)
+- [x] 3D-глобус знаний — Two.js в `site/index.html` (узлы=символы, пульсация=R_f, лигатуры)
+- [x] nginx конфиг + docker-compose site-сервис (`site/nginx.conf`, `docker-compose.yml`)
+- [x] MCP Registry манифест (`site/mcp-manifest.json`)
+- [ ] Деплой на VPS (домен, SSL, .env, bootstrap.py)
+- [ ] Регистрация в Anthropic MCP Registry (нужен публичный HTTPS)
+- [ ] Бесплатный период СТАРТ 🚀 (после деплоя)
 
 ---
 
@@ -604,6 +607,6 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 
 ---
 
-*Версия: 3.0 | Дата: 2026-06-03*  
+*Версия: 3.1 | Дата: 2026-06-13*  
 *Архитектор: @OneDimon*  
-*Статус: Фазы 0-2 + Безопасность + Автонаполнение — ВЫПОЛНЕНО. Фаза 3 (сайт) — в работе.*
+*Статус: Фазы 0–4 ВЫПОЛНЕНО. Фаза 3: сайт+глобус+MCP манифест ✅, деплой+регистрация+СТАРТ 🔴*
