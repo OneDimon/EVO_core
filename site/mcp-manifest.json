@@ -1,0 +1,62 @@
+{
+  "name": "evo-core",
+  "display_name": "EVO-core — Cognitive Layer",
+  "description": "Verified engineering knowledge as axioms. Delivers precise solution cartridges to AI flagships, eliminates hallucinations, auto-fills knowledge gaps during sleep mode.",
+  "version": "1.0.0",
+  "homepage": "https://evo-core.io",
+  "repository": "https://github.com/OneDimon/EVO_core",
+  "license": "MIT",
+  "author": {
+    "name": "OneDimon",
+    "email": "hi@evo-core.io"
+  },
+  "server": {
+    "type": "streamable-http",
+    "url": "https://evo-core.io/mcp",
+    "protocol": "json-rpc-2.0"
+  },
+  "auth": {
+    "type": "api-key",
+    "header": "X-API-Key",
+    "description": "Get your free API key at https://evo-core.io"
+  },
+  "tools": [
+    {
+      "name": "handshake",
+      "description": "Register flagship, establish session, get HMAC token",
+      "endpoint": "/api/v1/handshake"
+    },
+    {
+      "name": "concierge",
+      "description": "Interview flagship about task, stack, constraints",
+      "endpoint": "/api/v1/concierge"
+    },
+    {
+      "name": "query",
+      "description": "Get solution cartridge: verified symbols for the task",
+      "endpoint": "/api/v1/query"
+    },
+    {
+      "name": "step_done",
+      "description": "Report completed step, unlock next step",
+      "endpoint": "/api/v1/step_done"
+    },
+    {
+      "name": "result",
+      "description": "Submit result for YMS-MMM verification and archiving",
+      "endpoint": "/api/v1/result"
+    },
+    {
+      "name": "hook_reply",
+      "description": "Answer hook question about new knowledge",
+      "endpoint": "/api/v1/hook_reply"
+    }
+  ],
+  "categories": ["knowledge-management", "developer-tools", "ai-memory", "mcp"],
+  "tags": ["evo-core", "knowledge-base", "verified-solutions", "anti-hallucination", "context-compression"],
+  "pricing": {
+    "free_tier": true,
+    "free_period_months": 2,
+    "paid_plan_usd_month": 15
+  }
+}
