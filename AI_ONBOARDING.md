@@ -183,19 +183,20 @@
 | Режим СОН | `core/sleep_mode.py` (5 задач) | ✅ Готов |
 | Канал 1 | `core/knowledge_collector.py` | ✅ Готов, сшит с archivist |
 | Тесты | `tests/test_phase0,1,full.py` | ✅ 38 тестов |
-| **Публичный сайт** | — | 🔴 Не начат |
-| **3D-глобус** | — | 🔴 Не начат |
-| **MCP Registry** | — | 🔴 Не начат |
-| **Деплой prod** | — | 🟡 docker-compose готов, не развёрнут |
+| **Публичный сайт** | `site/index.html` | 🟡 Готов → нужен деплой |
+| **3D-глобус** | `site/index.html` Three.js | 🟡 Готов → нужен деплой |
+| **MCP Registry** | `site/mcp-manifest.json` | 🟡 Манифест готов → нужен HTTPS |
+| **Деплой prod** | `docker-compose.yml` + nginx | 🔴 VPS + SSL + .env → deploy |
 
 ---
 
 ## ЧТО ОСТАЛОСЬ (Фаза 3)
 
-### 1. Публичный сайт evo-core.io
+### 1. Публичный сайт evo-core.io ✅ СОЗДАН → нужен деплой
 
 ```
-Стиль: Dark High-Tech, кибер-минимализм
+`site/index.html` — Dark High-Tech, Three.js глобус, Hero, Compare, Pricing
+Деплой: docker-compose up → site сервис (nginx) раздаёт на 80 порту
 Разделы:
   / (Hero)          — одна строка что это + CTA "Получить ключ"
   /how-it-works     — анимированная схема конвейера
@@ -207,14 +208,11 @@
 Глобус: каждый узел = символ в pgvector, пульсация = R_f, GeoIP пользователей
 ```
 
-### 2. Публикация в Anthropic MCP Registry
+### 2. Публикация в Anthropic MCP Registry ✅ МАНИФЕСТ ГОТОВ
 
 ```
-Что нужно:
-  - manifest.json (name, description, tools, auth)
-  - Документация для install (уже есть /docs)
-  - Endpoint: Streamable HTTP JSON-RPC 2.0 (core/mcp_server.py — готов)
-  - Публичный HTTPS (нужен деплой)
+`site/mcp-manifest.json` — готов
+Осталось: публичный HTTPS → подать заявку на https://www.anthropic.com/mcp
 ```
 
 ### 3. Деплой production
