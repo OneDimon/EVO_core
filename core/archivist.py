@@ -46,7 +46,10 @@ async def _process_archive(output: str, solution_quality: str,
         if top_sim > 0.95:
             await _type_a(similar[0], output, applied_stack, vector)
         elif top_sim > 0.75:
-            await _type_b(similar[0], output, applied_stack, applied_stack, vector, original_tz)
+            # P3 fix: new_stack = текущий applied_stack (новое применение)
+            #         applied_stack = стек родительского символа
+            parent_stacks = similar[0].get('applicable_stacks', [])
+            await _type_b(similar[0], output, applied_stack, parent_stacks, vector, original_tz)
         else:
             await _new_symbol(output, applied_stack, vector, original_tz)
 
