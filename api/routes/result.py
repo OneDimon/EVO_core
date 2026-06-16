@@ -22,7 +22,9 @@ class ResultRequest(BaseModel):
     solution_quality: str        # "ideal" | "adapted" | "gap_filled"
     deviations: Optional[str] = None
     applied_stack: list[str] = []
-    original_tz: Optional[str] = None
+    original_tz: str             # P9 fix: ОБЯЗАТЕЛЬНОЕ поле. Без него YMS-MMM
+                                 # верифицирует вывод против самого себя → всегда pass.
+                                 # Флагман ОБЯЗАН передавать оригинальное ТЗ пользователя.
     cartridge: Optional[dict] = None
     notes: Optional[str] = None
 
@@ -31,7 +33,7 @@ async def result(req: ResultRequest):
     vreq = VerifyRequest(
         session_id=req.session_id,
         output=req.result,
-        original_tz=req.original_tz or req.result[:200],
+        original_tz=req.original_tz,  # P9: теперь обязательное поле
         cartridge=req.cartridge or {},
         applied_stack=req.applied_stack,
         solution_quality=req.solution_quality,
@@ -49,7 +51,7 @@ async def result(req: ResultRequest):
             from core.immune_system import reanimate
             asyncio.create_task(reanimate(
                 session_id=req.session_id,
-                task_description=req.original_tz or req.result[:200],
+                task_description=req.original_tz,
                 base_instructions=str(req.cartridge or {}),
                 faulty_output=req.result,
                 error_log="; ".join(vresult.failures),
@@ -71,7 +73,7 @@ async def result(req: ResultRequest):
         verify_result=vresult,
         session_id=req.session_id,
         output=req.result,
-        original_tz=req.original_tz or req.result[:200],
+        original_tz=req.original_tz,  # P9: теперь обязательное поле
         applied_stack=req.applied_stack,
         cartridge=req.cartridge or {},
         deviations=req.deviations or "",
