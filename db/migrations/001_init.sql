@@ -55,3 +55,8 @@ CREATE TABLE IF NOT EXISTS evo_notifications (
     status      TEXT DEFAULT 'pending',
     chosen      INTEGER
 );
+
+-- P13 fix: индекс для быстрой выборки pending уведомлений
+CREATE INDEX IF NOT EXISTS evo_notif_status_idx
+    ON evo_notifications (status)
+    WHERE status = 'pending';
