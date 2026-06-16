@@ -129,25 +129,31 @@ async def _sleep_cycle():
 
 
 async def _find_ligature_candidates():
-    """Ищет пары символов с similarity > 0.85 из разных областей."""
+    """
+    Ищет символы-кандидаты на лигатуру (confirmed_by >= 2).
+    P2 fix: НЕ помечаем hypothesis=TRUE — это инвертированная логика.
+    hypothesis=True по SCL раздел 6 = непроверенное знание.
+    Символы с confirmed_by >= 2 — наоборот, хорошо подтверждённые.
+    Лигатура создаётся в obsidian.py когда confirmed_by достигает 3.
+    Здесь только логируем кандидатов для мониторинга.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Символы с confirmed_by >= 2 — кандидаты на тройное подтверждение
         candidates = await conn.fetch("""
-            SELECT id, science, confirmed_by, confirmed_in
+            SELECT id, label, science, confirmed_by, confirmed_in
             FROM scl_symbols
             WHERE confirmed_by >= 2 AND is_legacy = FALSE
               AND hypothesis = FALSE
+            ORDER BY confirmed_by DESC
             LIMIT 20
         """)
-        count = 0
-        for c in candidates:
-            await conn.execute("""
-                UPDATE scl_symbols SET hypothesis = TRUE, last_updated = NOW()
-                WHERE id = $1
-            """, c['id'])
-            count += 1
-    log.info(f"[Sleep] Лигатурные кандидаты: {count} помечено")
+    count = len(candidates)
+    if count:
+        ids = [c['id'] for c in candidates]
+        log.info(f"[Sleep] Кандидаты на лигатуру: {count} символов → {ids[:5]}...")
+        log.info("[Sleep] Лигатура будет создана в obsidian.py при confirmed_by >= 3")
+    else:
+        log.info("[Sleep] Кандидатов на лигатуру не найдено")
 
 
 async def _check_hypotheses():
