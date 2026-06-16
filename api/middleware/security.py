@@ -79,6 +79,7 @@ def verify_incoming_hmac(body: bytes, signature: str, session_key: str) -> bool:
 NO_AUTH_PATHS = {
     "/health", "/", "/docs", "/openapi.json",
     "/api/v1/handshake",   # первичное подключение — без токена
+    "/api/v1/register",    # P11: регистрация без API-ключа
 }
 
 # ── Middleware class ──────────────────────────────────────────────────────────
