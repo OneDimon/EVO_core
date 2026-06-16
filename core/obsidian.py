@@ -113,8 +113,11 @@ async def _archive_delta(delta_type: str, output: str, original_tz: str,
             else:
                 from core.archivist import _type_b
                 vector = await r.embed(output[:400])
+                # P8 fix: new_stack = текущий applied_stack
+                #         applied_stack = стек родительского символа
+                parent_stacks = parent_dict.get('applicable_stacks', [])
                 await _type_b(parent_dict, output, applied_stack,
-                               applied_stack, vector, original_tz)
+                               parent_stacks, vector, original_tz)
                 log.info(f"[Obsidian] Тип Б: новый символ от {parent_id}")
 
 
