@@ -12,6 +12,33 @@ Knowledge Collector — автономное наполнение ядра (Ка
 import logging, asyncio, json
 from datetime import datetime, timezone
 
+def _detect_source_type(url: str) -> str:
+    """
+    P6 fix: определяет source_type по URL источника.
+    Допустимые значения: github|npm|pypi|n8n|official|cli_plugin|ai_inferred
+    "ai_search" было неверным — это метод, не тип источника.
+    """
+    if not url:
+        return "ai_inferred"
+    url_lower = url.lower()
+    if "github.com" in url_lower:
+        return "github"
+    if "npmjs.com" in url_lower or "npm.io" in url_lower:
+        return "npm"
+    if "pypi.org" in url_lower:
+        return "pypi"
+    if "n8n.io" in url_lower:
+        return "n8n"
+    if any(x in url_lower for x in ["anthropic.com", "openai.com",
+                                      "google.com", "docs.python.org",
+                                      "developer.mozilla.org"]):
+        return "official"
+    if any(x in url_lower for x in ["cursor.sh", "marketplace.visualstudio.com",
+                                      "extensions.codeium.com"]):
+        return "cli_plugin"
+    return "ai_inferred"
+
+
 log = logging.getLogger("evo.collector")
 
 # Приоритет источников
@@ -209,7 +236,8 @@ async def _search_for_gap(gap: dict) -> list[dict]:
             # Добавляем метаданные источника
             for c in candidates:
                 c["auto_collected"] = True
-                c["source_type"] = "ai_search"
+                # P6 fix: определяем тип по URL, не хардкодим "ai_search"
+                c["source_type"] = _detect_source_type(c.get("source_url", ""))
                 c["collected_at"] = datetime.now(timezone.utc).isoformat()
             return candidates
     except Exception as e:
