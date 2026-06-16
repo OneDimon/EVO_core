@@ -18,7 +18,8 @@ async def find_symbols(query_vector: list[float], top_k: int = 5,
                        exclude_legacy: bool = True) -> list[dict]:
     """
     Безопасный векторный поиск.
-    Вектор передаётся через строковый параметр с валидацией — не через f-string.
+    Вектор передаётся как $1::vector параметр asyncpg — без f-string подстановки в SQL.
+    P1 fix: убрана уязвимость .replace("${vec_str}", ...) — теперь полная параметризация.
     """
     pool = await get_pool()
     # Валидация вектора
@@ -26,8 +27,10 @@ async def find_symbols(query_vector: list[float], top_k: int = 5,
         return []
     vec_str = "[" + ",".join(f"{float(x):.8f}" for x in query_vector) + "]"
 
+    # $1 = вектор, $2 = top_k, далее опциональные фильтры
     conditions = []
-    params = [top_k]
+    params: list = [vec_str, top_k]
+
     if exclude_legacy:
         conditions.append("is_legacy = FALSE")
     if stack_filter:
@@ -38,11 +41,11 @@ async def find_symbols(query_vector: list[float], top_k: int = 5,
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(f"""
-            SELECT *, 1 - (vector <=> ${{vec_str}}::vector) AS similarity,
-                   (1 - (vector <=> ${{vec_str}}::vector)) * log(rating_frequency + 2) AS score
+            SELECT *, 1 - (vector <=> $1::vector) AS similarity,
+                   (1 - (vector <=> $1::vector)) * log(rating_frequency + 2) AS score
             FROM scl_symbols {where}
-            ORDER BY score DESC LIMIT $1
-        """.replace("${vec_str}", f"'{vec_str}'"), *params)
+            ORDER BY score DESC LIMIT $2
+        """, *params)
         return [dict(r) for r in rows]
 
 async def get_symbol(symbol_id: str) -> Optional[dict]:
