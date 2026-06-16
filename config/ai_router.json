@@ -2,7 +2,6 @@
   "evo_ai_router": {
     "description": "Универсальный коннектор для всех AI-процессов ядра. Подключи любую модель — локальную или API.",
     "version": "1.0.0",
-
     "primary": {
       "provider": "gemini",
       "model": "gemini-2.5-pro",
@@ -11,7 +10,6 @@
       "rate_limit_rpm": 60,
       "timeout_sec": 30
     },
-
     "fallback_chain": [
       {
         "provider": "gemini_flash",
@@ -35,7 +33,6 @@
         "note": "Специализированная кодовая модель"
       }
     ],
-
     "routing_rules": {
       "vectorization": "primary",
       "concierge_questions": "primary",
@@ -45,15 +42,18 @@
       "immune_system_patch": "primary",
       "bootstrap_fill": "primary",
       "background_assimilation": "fallback_chain[1]",
-      "sleep_mode": "fallback_chain[1]"
+      "sleep_mode": "fallback_chain[1]",
+      "knowledge_collection": "primary"
     },
-
     "retry_policy": {
       "max_retries": 3,
-      "backoff_seconds": [5, 15, 45],
+      "backoff_seconds": [
+        5,
+        15,
+        45
+      ],
       "on_exhausted": "fallback_chain"
     },
-
     "processes_requiring_ai": [
       "vectorization",
       "concierge_questions",
@@ -66,10 +66,15 @@
       "hook_query_evaluation",
       "macro_root_classification"
     ],
-
     "add_new_model": {
       "instructions": "Добавь объект в fallback_chain с полями: provider, model, api_key_env OR endpoint, trigger",
-      "supported_formats": ["openai_compatible", "anthropic", "google_gemini", "ollama", "litellm_proxy"]
+      "supported_formats": [
+        "openai_compatible",
+        "anthropic",
+        "google_gemini",
+        "ollama",
+        "litellm_proxy"
+      ]
     }
   }
 }
