@@ -5,7 +5,7 @@ Security Middleware — критическая защита EVO-core
 3. HMAC верификация входящих запросов от флагмана
 4. Блокировка при отсутствии секретов в .env
 """
-import os, hmac, hashlib, time, logging
+import os, hmac, hashlib, logging
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from collections import defaultdict
@@ -28,20 +28,40 @@ def check_required_secrets():
             f"Для разработки: EVO_ENV=development"
         )
 
-# ── In-memory rate limiter (замените Redis для продакшна) ────────────────────
+# ── Redis rate limiter (P10 fix: работает при uvicorn --workers N) ───────────
+# In-memory defaultdict заменён на Redis incr+expire.
+# При недоступности Redis — падаем в in-memory fallback (dev-режим).
 
-_rate_store: dict = defaultdict(list)
 RATE_LIMIT_RPM = int(os.getenv("RATE_LIMIT_RPM", "60"))
+_rate_store_fallback: dict = defaultdict(list)  # только для dev/fallback
 
-def _check_rate_limit(key: str) -> bool:
-    """True если запрос разрешён, False если превышен лимит."""
-    now = time.time()
-    window_start = now - 60
-    _rate_store[key] = [t for t in _rate_store[key] if t > window_start]
-    if len(_rate_store[key]) >= RATE_LIMIT_RPM:
-        return False
-    _rate_store[key].append(now)
-    return True
+async def _check_rate_limit(key: str) -> bool:
+    """
+    True если запрос разрешён, False если превышен лимит.
+    P10 fix: Redis-based, работает при multi-worker uvicorn.
+    Fallback на in-memory если Redis недоступен (тесты/dev).
+    """
+    try:
+        from db.redis_client import get_redis
+        r = await get_redis()
+        rate_key = f"evo:rate:{key}"
+        count = await r.incr(rate_key)
+        if count == 1:
+            await r.expire(rate_key, 60)  # окно 60 секунд
+        return count <= RATE_LIMIT_RPM
+    except Exception as e:
+        log.warning(f"[Security] Redis rate limit unavailable, using in-memory fallback: {e}")
+        # In-memory fallback для dev/тестов
+        import time
+        now = time.time()
+        window_start = now - 60
+        _rate_store_fallback[key] = [
+            t for t in _rate_store_fallback[key] if t > window_start
+        ]
+        if len(_rate_store_fallback[key]) >= RATE_LIMIT_RPM:
+            return False
+        _rate_store_fallback[key].append(now)
+        return True
 
 # ── HMAC верификация входящих запросов ───────────────────────────────────────
 
@@ -86,7 +106,7 @@ class EVOSecurityMiddleware:
         # Rate limiting по API ключу или IP
         api_key = request.headers.get("X-API-Key", "")
         rate_key = api_key or request.client.host
-        if not _check_rate_limit(rate_key):
+        if not await _check_rate_limit(rate_key):
             response = JSONResponse(
                 {"error": "rate_limit_exceeded",
                  "message": f"Превышен лимит {RATE_LIMIT_RPM} запросов/мин"},
