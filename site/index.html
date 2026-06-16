@@ -560,22 +560,47 @@
 })();
 
 // ── Get Key ──────────────────────────────────────────────────────
-function handleGetKey() {
+async function handleGetKey() {
   const email = document.getElementById('email-input').value.trim();
-  const result = document.getElementById('key-result');
-  if (!email || !email.includes('@')) {
-    result.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-red-500/30 font-mono text-sm text-left text-red-400';
-    result.textContent = '✗ Введите корректный email';
-    result.classList.remove('hidden');
+  const resultEl = document.getElementById('key-result');
+
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    resultEl.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-red-500/30 font-mono text-sm text-left text-red-400';
+    resultEl.textContent = '✗ Введите корректный email';
+    resultEl.classList.remove('hidden');
     return;
   }
-  result.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-[#00e5ff]/30 font-mono text-sm text-left';
-  result.innerHTML = `<span class="text-[#00e5ff]">✓ Ключ выслан на ${email}</span><br/>
-<span class="text-[#64748b]">Установка: pip install evo-core-client</span><br/>
-<span class="text-[#64748b]">EVO_API_KEY=evo_... evo connect</span><br/>
-<span class="text-[#64748b]">Инструкция → <a href="/docs" class="underline">docs</a></span>`;
-  result.classList.remove('hidden');
-  // TODO: POST /api/v1/register email → выдать ключ
+
+  resultEl.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-[#1c2333] font-mono text-sm text-left text-[#64748b]';
+  resultEl.textContent = '⏳ Создаём ключ...';
+  resultEl.classList.remove('hidden');
+
+  try {
+    // P11 fix: реальный вызов /api/v1/register
+    const res = await fetch('/api/v1/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email, plan: 'free'})
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      resultEl.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-red-500/30 font-mono text-sm text-left text-red-400';
+      resultEl.textContent = '✗ ' + (data.detail || 'Ошибка регистрации');
+      return;
+    }
+
+    resultEl.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-[#00e5ff]/30 font-mono text-sm text-left';
+    resultEl.innerHTML =
+      `<span class="text-[#00e5ff]">✓ Ключ создан для ${email}</span><br/>` +
+      `<span class="text-[#94a3b8]">EVO_API_KEY=<b class="text-white">${data.api_key}</b></span><br/><br/>` +
+      `<span class="text-[#64748b]">pip install evo-core-client</span><br/>` +
+      `<span class="text-[#64748b]">evo connect --key ${data.api_key}</span><br/><br/>` +
+      `<a href="/docs" class="text-[#00e5ff] underline">Документация →</a>`;
+  } catch(e) {
+    resultEl.className = 'mt-6 p-4 rounded-xl bg-[#030712] border border-red-500/30 font-mono text-sm text-left text-red-400';
+    resultEl.textContent = '✗ Сервер недоступен. Попробуйте позже.';
+  }
 }
 </script>
 </body>
