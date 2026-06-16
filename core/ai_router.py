@@ -66,22 +66,40 @@ class AIRouter:
         raise RuntimeError("All AI providers exhausted")
 
     async def embed(self, text: str) -> list[float]:
-        """Векторизация текста — для записи и поиска символов."""
-        prompt = f"Represent this knowledge entry for semantic search:\n{text}"
-        # TODO: использовать dedicated embedding endpoint
-        # Для Фазы 0: используем Gemini text + парсим как вектор
-        # В продакшне: заменить на sentence-transformers локально
-        result = await self._call_with_fallback(
-            f"Return ONLY a JSON array of 768 floats representing the semantic vector for: {text}",
-            task="vectorization"
-        )
-        try:
-            return json.loads(result)
-        except Exception:
-            # Fallback: детерминированный хэш-вектор для тестов
-            import hashlib
-            h = hashlib.sha256(text.encode()).digest()
+        """
+        Векторизация текста через Gemini embedContent API.
+        P7 fix: заменён LLM-промпт (псевдослучайный массив) на реальный embedding endpoint.
+        Модель: embedding-001, dim=768 — совпадает со схемой pgvector.
+        Fallback: детерминированный SHA-256 хэш-вектор (для тестов без API-ключа).
+        """
+        import os, hashlib
+        api_key = os.getenv("GEMINI_API_KEY", "")
+
+        def _hash_fallback(t: str) -> list[float]:
+            """Детерминированный fallback — для тестов без API."""
+            h = hashlib.sha256(t.encode()).digest()
             return [((b / 255.0) - 0.5) * 2 for b in (h * 24)[:768]]
+
+        if not api_key:
+            log.warning("[ai_router] GEMINI_API_KEY не задан — используется hash-fallback для embed()")
+            return _hash_fallback(text)
+
+        try:
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/"
+                f"models/embedding-001:embedContent?key={api_key}"
+            )
+            resp = await self._client.post(url, json={
+                "model": "models/embedding-001",
+                "content": {"parts": [{"text": text[:2048]}]}
+            })
+            resp.raise_for_status()
+            values = resp.json()["embedding"]["values"]
+            # embedding-001 возвращает 768 float — совпадает с pgvector dim
+            return values
+        except Exception as e:
+            log.warning(f"[ai_router] embed() Gemini failed: {e} — hash-fallback")
+            return _hash_fallback(text)
 
     async def classify(self, text: str, task: str) -> str:
         """Классификация: макро-корень / Тип А/Б / и др."""
