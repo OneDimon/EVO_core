@@ -180,20 +180,26 @@ async def _github_write(path: str, data: bytes) -> str:
     return path
 
 async def _r2_read(path: str) -> bytes:
-    from core.config_manager import get
-    import httpx
-    account = await get("SHARD_R2_ACCOUNT_ID")
-    bucket  = await get("SHARD_R2_BUCKET")
-    async with httpx.AsyncClient() as c:
-        r = await c.get(f"https://{account}.r2.cloudflarestorage.com/{bucket}{path}")
-        return r.content
+    """
+    P14 fix: R2 требует AWS Signature v4 — без неё все запросы → 403 Forbidden.
+    Текущая реализация не содержит Sig v4 → тихая ошибка при деплое с R2.
+    До реализации Sig v4: использовать SHARD_PROVIDER=gdrive или github.
+    Реализация Sig v4: httpx + manual HMAC-SHA256 подпись заголовков.
+    """
+    raise NotImplementedError(
+        "R2 требует AWS Signature v4. "
+        "Используйте SHARD_PROVIDER=gdrive или github до реализации Sig v4. "
+        "См. PROJECT_MAP.md раздел 'Что осталось'."
+    )
 
 async def _r2_write(path: str, data: bytes) -> str:
-    from core.config_manager import get
-    import httpx
-    account = await get("SHARD_R2_ACCOUNT_ID")
-    bucket  = await get("SHARD_R2_BUCKET")
-    async with httpx.AsyncClient() as c:
-        await c.put(f"https://{account}.r2.cloudflarestorage.com/{bucket}{path}",
-            content=data)
-    return path
+    """
+    P14 fix: R2 требует AWS Signature v4 — без неё PUT → 403 Forbidden.
+    Тихая ошибка: шарды не пишутся, данные теряются.
+    До реализации Sig v4: использовать SHARD_PROVIDER=gdrive или github.
+    """
+    raise NotImplementedError(
+        "R2 требует AWS Signature v4. "
+        "Используйте SHARD_PROVIDER=gdrive или github до реализации Sig v4. "
+        "См. PROJECT_MAP.md раздел 'Что осталось'."
+    )
