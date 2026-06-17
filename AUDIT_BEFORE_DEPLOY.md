@@ -44,8 +44,8 @@
 
 ### P1 — `db/pg_client.py::find_symbols` — SQL через f-string (уязвимость инъекции)
 
-- [ ] **Файл:** `db/pg_client.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `db/pg_client.py`
+- [x] **Проблема:**
   ```python
   # Текущий код (уязвимо):
   sql = sql_template.replace("${vec_str}", f"'{vec_str}'")
@@ -54,7 +54,7 @@
   Вектор вставляется в SQL строку напрямую, минуя параметризацию asyncpg.
   Безопасно только пока `vec_str` содержит цифры и запятые — но это хрупко.
   Нарушает принцип защиты по умолчанию. При любом изменении валидации — открытая инъекция.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```python
   # Правильно — вектор как параметр:
   await conn.fetch(
@@ -62,15 +62,15 @@
       f"[{vec_str}]", top_k
   )
   ```
-- [ ] **Влияет на:** `core/librarian.py` (вызывает `find_symbols`), весь поиск символов.
-- [ ] **Проверить после правки:** `tests/test_phase0.py` — тест поиска по маячкам.
+- [x] **Влияет на:** `core/librarian.py` (вызывает `find_symbols`), весь поиск символов.
+- [x] **Проверить после правки:** `tests/test_phase0.py` — тест поиска по маячкам.
 
 ---
 
 ### P2 — `core/sleep_mode.py::_find_ligature_candidates` — инвертированная логика hypothesis
 
-- [ ] **Файл:** `core/sleep_mode.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `core/sleep_mode.py`
+- [x] **Проблема:**
   ```python
   # Текущий код (неверно):
   await conn.execute(
@@ -82,7 +82,7 @@
   `hypothesis=True` = знание непроверенное, под вопросом.
   Логика инвертирована: лучшие символы переводятся в статус "сомнительных".
   Лигатура создаётся в `obsidian.py` при `confirmed_by >= 3` — не здесь.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```python
   # Правильно — только логировать кандидатов, не трогать hypothesis:
   candidates = await conn.fetch(
@@ -93,14 +93,14 @@
   log.info(f"[Sleep] Кандидаты на лигатуру: {len(candidates)} символов")
   # obsidian.py создаст лигатуру когда confirmed_by достигнет 3
   ```
-- [ ] **Влияет на:** `SCL_FRACTAL_PROTOCOL.md` раздел 6, `core/obsidian.py`, целостность базы знаний.
+- [x] **Влияет на:** `SCL_FRACTAL_PROTOCOL.md` раздел 6, `core/obsidian.py`, целостность базы знаний.
 
 ---
 
 ### P3 — `core/archivist.py::_process_archive` — дублирование `applied_stack`
 
-- [ ] **Файл:** `core/archivist.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `core/archivist.py`
+- [x] **Проблема:**
   ```python
   # Текущий код (неверно — оба аргумента одинаковы):
   await _type_b(similar[0], output, applied_stack, applied_stack, vector, original_tz)
@@ -110,20 +110,20 @@
   — `new_stack` = стек *нового* применения (текущий запрос)
   — `applied_stack` = стек *родительского* символа (из `parent["applicable_stacks"]`)
   Разница теряется. Эволюция стека в символе не фиксируется корректно.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```python
   # Правильно:
   parent_stacks = similar[0].get("applicable_stacks", [])
   await _type_b(similar[0], output, applied_stack, parent_stacks, vector, original_tz)
   ```
-- [ ] **Влияет на:** `core/obsidian.py::_archive_delta` — та же ошибка (см. P8).
+- [x] **Влияет на:** `core/obsidian.py::_archive_delta` — та же ошибка (см. P8).
   После правки проверить оба файла одновременно.
 
 ---
 
 ### P4 — `api/routes/handshake.py` + `api/middleware/security.py` — HMAC bytes/str несоответствие
 
-- [ ] **Файл:** `api/routes/handshake.py`, `api/middleware/security.py`
+- [x] **Файл:** `api/routes/handshake.py`, `api/middleware/security.py`
 - [ ] **Проблема:**
   ```python
   # handshake.py — генерирует ключ как строку:
@@ -135,19 +135,19 @@
   # hmac.new ожидает key как bytes, но session_key — str → TypeError при верификации
   ```
   При каждом запросе после handshake верификация HMAC падает с `TypeError`.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```python
   # security.py — явно кодировать ключ:
   expected = hmac.new(session_key.encode(), msg.encode(), hashlib.sha256).hexdigest()
   ```
   Проверить консистентность во всех местах где используется `session_key`.
-- [ ] **Влияет на:** Всю цепочку аутентификации после handshake: `query`, `result`, `step_done`.
+- [x] **Влияет на:** Всю цепочку аутентификации после handshake: `query`, `result`, `step_done`.
 
 ---
 
 ### P5 — `db/migrations` — нет таблицы `evo_sessions`
 
-- [ ] **Файл:** Новая миграция `db/migrations/005_sessions.sql`
+- [x] **Файл:** Новая миграция `db/migrations/005_sessions.sql`
 - [ ] **Проблема:**
   `api/routes/handshake.py` пишет в таблицу `evo_sessions`:
   ```python
@@ -172,15 +172,15 @@
       ON evo_sessions (created_at);
   -- TTL-очистка: сессии старше 24ч (запускать через pg_cron или sleep_mode)
   ```
-- [ ] **Влияет на:** `docker-compose.yml` (добавить `005_sessions.sql` в init),
+- [x] **Влияет на:** `docker-compose.yml` (добавить `005_sessions.sql` в init),
   `AI_ONBOARDING.md` (порядок запуска), `IMPLEMENTATION_PLAN.md`.
 
 ---
 
 ### P6 — `core/knowledge_collector.py` — `source_type` всегда `"ai_search"`, не тип источника
 
-- [ ] **Файл:** `core/knowledge_collector.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `core/knowledge_collector.py`
+- [x] **Проблема:**
   ```python
   # Текущий код (неверно):
   c["source_type"] = "ai_search"  # это метод поиска, не тип источника
@@ -207,7 +207,7 @@
 
   c["source_type"] = _detect_source_type(c.get("source_url", ""))
   ```
-- [ ] **Влияет на:** `db/models.py` (добавить `"ai_inferred"` в комментарий допустимых значений),
+- [x] **Влияет на:** `db/models.py` (добавить `"ai_inferred"` в комментарий допустимых значений),
   `SCL_FRACTAL_PROTOCOL.md` раздел 19 (добавить `ai_inferred` в список допустимых типов),
   `SLEEP_MODE.md` раздел "Метаданные источника".
 
@@ -217,8 +217,8 @@
 
 ### P7 — `core/ai_router.py::embed` — не семантический эмбеддинг
 
-- [ ] **Файл:** `core/ai_router.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `core/ai_router.py`
+- [x] **Проблема:**
   ```python
   # Текущий код — просит LLM вернуть массив через текст:
   result = await self._call_with_fallback(
@@ -243,14 +243,14 @@
      dim=1536 — требует изменить dim в БД
   ```
   Вариант A — наименее инвазивен, Gemini уже в стеке.
-- [ ] **Влияет на:** `db/migrations/001_init.sql` (dim), `core/librarian.py`, весь поиск.
+- [x] **Влияет на:** `db/migrations/001_init.sql` (dim), `core/librarian.py`, весь поиск.
 
 ---
 
 ### P8 — `core/obsidian.py::_archive_delta` — та же ошибка стека что P3
 
-- [ ] **Файл:** `core/obsidian.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `core/obsidian.py`
+- [x] **Проблема:**
   ```python
   # Та же ошибка что в archivist.py (P3):
   await _type_b(parent_dict, output, applied_stack, applied_stack, vector, original_tz)
@@ -260,14 +260,14 @@
   parent_stacks = parent_dict.get("applicable_stacks", [])
   await _type_b(parent_dict, output, applied_stack, parent_stacks, vector, original_tz)
   ```
-- [ ] **Влияет на:** `core/archivist.py` — исправлять P3 и P8 в одном коммите.
+- [x] **Влияет на:** `core/archivist.py` — исправлять P3 и P8 в одном коммите.
 
 ---
 
 ### P9 — `api/routes/result.py` — `original_tz` не обязательное поле
 
-- [ ] **Файл:** `api/routes/result.py`, `api/models/` (Pydantic схема запроса)
-- [ ] **Проблема:**
+- [x] **Файл:** `api/routes/result.py`, `api/models/` (Pydantic схема запроса)
+- [x] **Проблема:**
   ```python
   # Текущий код — тихий fallback:
   original_tz = req.original_tz or req.result[:200]
@@ -283,15 +283,15 @@
       ...
   ```
   **Вариант Б** — логировать WARNING и возвращать 422 если `original_tz` пустой.
-- [ ] **Влияет на:** `FLAGSHIP_SYSTEM_PROMPT.md` — добавить требование всегда передавать `original_tz`.
+- [x] **Влияет на:** `FLAGSHIP_SYSTEM_PROMPT.md` — добавить требование всегда передавать `original_tz`.
   `AGENTS.md` / `.claude/CLAUDE.md` — синхронизировать.
 
 ---
 
 ### P10 — `api/middleware/security.py` — rate limiter in-memory не работает при 4 воркерах
 
-- [ ] **Файл:** `api/middleware/security.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `api/middleware/security.py`
+- [x] **Проблема:**
   ```python
   # Текущий код:
   _rate_store: dict = {}  # in-memory — не работает при --workers 4
@@ -309,13 +309,13 @@
           await r.expire(key, 60)  # окно 60 секунд
       return count <= 60           # 60 req/min
   ```
-- [ ] **Влияет на:** `db/redis_client.py` (функция `get_redis` уже есть), `docker-compose.yml`.
+- [x] **Влияет на:** `db/redis_client.py` (функция `get_redis` уже есть), `docker-compose.yml`.
 
 ---
 
 ### P11 — `site/index.html` + отсутствует `api/routes/register.py`
 
-- [ ] **Файл:** `site/index.html`, новый `api/routes/register.py`, `api/main.py`
+- [x] **Файл:** `site/index.html`, новый `api/routes/register.py`, `api/main.py`
 - [ ] **Проблема:**
   ```javascript
   // Текущий код в site/index.html:
@@ -341,14 +341,14 @@
       body: JSON.stringify({email})
   });
   ```
-- [ ] **Влияет на:** `api/main.py` (подключить роут), `db/users.py`, `site/nginx.conf` (уже проксирует `/api/`).
+- [x] **Влияет на:** `api/main.py` (подключить роут), `db/users.py`, `site/nginx.conf` (уже проксирует `/api/`).
 
 ---
 
 ### P12 — `config/ai_router.json` — нет task `knowledge_collection` в routing_rules
 
-- [ ] **Файл:** `config/ai_router.json`
-- [ ] **Проблема:**
+- [x] **Файл:** `config/ai_router.json`
+- [x] **Проблема:**
   `core/knowledge_collector.py` вызывает:
   ```python
   result = await ai_router.generate(query, task="knowledge_collection")
@@ -359,7 +359,7 @@
   ```json
   "knowledge_collection": "primary"
   ```
-- [ ] **Влияет на:** `core/knowledge_collector.py`, `core/ai_router.py::_get_model_for_task`.
+- [x] **Влияет на:** `core/knowledge_collector.py`, `core/ai_router.py::_get_model_for_task`.
 
 ---
 
@@ -367,8 +367,8 @@
 
 ### P13 — `db/migrations/001_init.sql` — нет индекса на `evo_notifications(status)`
 
-- [ ] **Файл:** `db/migrations/001_init.sql` или `005_sessions.sql`
-- [ ] **Проблема:** `notify_architect` делает `SELECT WHERE status='pending'` без индекса.
+- [x] **Файл:** `db/migrations/001_init.sql` или `005_sessions.sql`
+- [x] **Проблема:** `notify_architect` делает `SELECT WHERE status='pending'` без индекса.
   При росте уведомлений — полный seq scan.
 - [ ] **Правка:**
   ```sql
@@ -381,8 +381,8 @@
 
 ### P14 — `shards/shard_client.py::_r2_write/_r2_read` — нет AWS Sig v4, тихая ошибка
 
-- [ ] **Файл:** `shards/shard_client.py`
-- [ ] **Проблема:**
+- [x] **Файл:** `shards/shard_client.py`
+- [x] **Проблема:**
   ```python
   # Текущий код — запрос без аутентификации:
   await c.put(f"https://{account}.r2.cloudflarestorage.com/{bucket}{path}", content=data)
@@ -405,15 +405,15 @@
 
 ### P15 — `README.md` — ссылка на IMPL PLAN указывает `v3.0`, файл уже `v3.1`
 
-- [ ] **Файл:** `README.md`
-- [ ] **Проблема:** Навигационная таблица содержит `v3.0` вместо актуального `v3.1`.
+- [x] **Файл:** `README.md`
+- [x] **Проблема:** Навигационная таблица содержит `v3.0` вместо актуального `v3.1`.
 - [ ] **Правка:** Заменить `v3.0` → `v3.1` в строке навигации IMPLEMENTATION_PLAN.
 
 ---
 
 ### P16 — `core/archivist.py::_generate_id` — `science[:2]` для не-ASCII корней
 
-- [ ] **Файл:** `core/archivist.py`, `SCL_SYMBOLIC_NOTATION.md`
+- [x] **Файл:** `core/archivist.py`, `SCL_SYMBOLIC_NOTATION.md`
 - [ ] **Проблема:**
   ```python
   sym = science[:2]  # "Технология" → "Те" вместо нотационного символа
@@ -438,22 +438,22 @@
 
 | # | Приоритет | Файл(ы) | Статус |
 |---|-----------|---------|--------|
-| P1 | 🔴 | `db/pg_client.py` | [ ] |
-| P2 | 🔴 | `core/sleep_mode.py` | [ ] |
-| P3 | 🔴 | `core/archivist.py` | [ ] |
-| P4 | 🔴 | `api/routes/handshake.py`, `api/middleware/security.py` | [ ] |
-| P5 | 🔴 | `db/migrations/005_sessions.sql`, `docker-compose.yml` | [ ] |
-| P6 | 🔴 | `core/knowledge_collector.py` | [ ] |
-| P7 | 🟡 | `core/ai_router.py` | [ ] |
-| P8 | 🟡 | `core/obsidian.py` | [ ] |
-| P9 | 🟡 | `api/routes/result.py` | [ ] |
-| P10 | 🟡 | `api/middleware/security.py` | [ ] |
-| P11 | 🟡 | `site/index.html`, `api/routes/register.py`, `api/main.py` | [ ] |
-| P12 | 🟡 | `config/ai_router.json` | [ ] |
-| P13 | 🟢 | `db/migrations/001_init.sql` | [ ] |
-| P14 | 🟢 | `shards/shard_client.py` | [ ] |
-| P15 | 🟢 | `README.md` | [ ] |
-| P16 | 🟢 | `core/archivist.py`, `SCL_SYMBOLIC_NOTATION.md` | [ ] |
+| P1 | 🔴 | `db/pg_client.py` | [x] ✓ 2026-06-13 |
+| P2 | 🔴 | `core/sleep_mode.py` | [x] ✓ 2026-06-13 |
+| P3 | 🔴 | `core/archivist.py` | [x] ✓ 2026-06-13 |
+| P4 | 🔴 | `api/routes/handshake.py`, `api/middleware/security.py` | [x] ✓ Код был корректен |
+| P5 | 🔴 | `db/migrations/005_sessions.sql`, `docker-compose.yml` | [x] ✓ 2026-06-13 |
+| P6 | 🔴 | `core/knowledge_collector.py` | [x] ✓ 2026-06-13 |
+| P7 | 🟡 | `core/ai_router.py` | [x] ✓ 2026-06-13 Gemini embedContent |
+| P8 | 🟡 | `core/obsidian.py` | [x] ✓ 2026-06-13 |
+| P9 | 🟡 | `api/routes/result.py` | [x] ✓ 2026-06-13 |
+| P10 | 🟡 | `api/middleware/security.py` | [x] ✓ 2026-06-13 Redis rate limit |
+| P11 | 🟡 | `site/index.html`, `api/routes/register.py`, `api/main.py` | [x] ✓ 2026-06-13 |
+| P12 | 🟡 | `config/ai_router.json` | [x] ✓ 2026-06-13 |
+| P13 | 🟢 | `db/migrations/001_init.sql` | [x] ✓ 2026-06-13 |
+| P14 | 🟢 | `shards/shard_client.py` | [x] ✓ 2026-06-13 NotImplementedError |
+| P15 | 🟢 | `README.md` | [x] ✓ Уже была v3.1 |
+| P16 | 🟢 | `core/archivist.py`, `SCL_SYMBOLIC_NOTATION.md` | [x] ✓ 2026-06-13 ROOT_CODES |
 
 ---
 
