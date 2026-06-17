@@ -166,6 +166,41 @@ async def _new_symbol(output: str, applied_stack: list[str],
              + (f" src={source_url}" if source_url else ""))
 
 
+
+# P16 fix: маппинг 32 макро-корней → 2-символьные коды для SCL-нотации.
+# Без этого science[:2] для русских названий даёт нечитаемые двухбуквенные коды.
+# Нотация: τ^{auto}_{zp_0047} — sym должен быть латинским кодом из этого маппинга.
+ROOT_CODES: dict[str, str] = {
+    # Точные науки
+    "Математика": "Mt",   "Физика": "Ph",      "Химия": "Ch",
+    "Биология": "Bi",     "Информатика": "Cs",  "Кибернетика": "Cy",
+    # Инженерия
+    "Технология": "Tc",   "Архитектура": "Ar",  "Механика": "Mc",
+    "Электроника": "El",  "Робототехника": "Rb", "Автоматизация": "Au",
+    # ИИ и данные
+    "ИИ": "Ai",           "МашОбучение": "Ml",  "Данные": "Da",
+    "Алгоритмы": "Al",    "БазыДанных": "Db",   "Сети": "Nt",
+    # Философия и гуманитарные
+    "Философия": "Ph",    "Лингвистика": "Ln",  "Психология": "Ps",
+    "Социология": "So",   "Экономика": "Ec",    "Право": "Lw",
+    # Практика
+    "Медицина": "Md",     "Педагогика": "Pd",   "Менеджмент": "Mg",
+    "Маркетинг": "Mk",    "Дизайн": "Ds",       "Искусство": "Ar",
+    # Системные
+    "Безопасность": "Sc", "Инфраструктура": "If",
+}
+
+def _get_root_code(science: str) -> str:
+    """Возвращает 2-символьный код макро-корня для SCL-нотации."""
+    if science in ROOT_CODES:
+        return ROOT_CODES[science]
+    # Fallback: первые 2 заглавных ASCII символа из строки
+    ascii_chars = [c for c in science if c.isascii() and c.isalpha()]
+    if len(ascii_chars) >= 2:
+        return (ascii_chars[0] + ascii_chars[1]).upper()
+    # Последний резерв: hex от первых 2 байт
+    return science[:2].encode('utf-8').hex()[:2].upper()
+
 async def _generate_id(science: str, section: str, subsection: str) -> str:
     """Генерация ID по нотации SCL: τ^{auto}_{zp_0047}"""
     from db.pg_client import get_pool
@@ -178,5 +213,5 @@ async def _generate_id(science: str, section: str, subsection: str) -> str:
     num = str(int(count or 0) + 1).zfill(4)
     sec = re.sub(r'[^a-zA-Z0-9]', '_', section[:8].lower())
     sub = re.sub(r'[^a-zA-Z0-9]', '_', subsection[:4].lower())
-    sym = science[:2] if len(science) <= 2 else science[0]
+    sym = _get_root_code(science)  # P16 fix: маппинг 32 корней вместо science[:2]
     return f"{sym}^{{{sec}}}_{{{sub}_{num}}}"
