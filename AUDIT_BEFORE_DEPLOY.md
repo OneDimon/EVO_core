@@ -124,7 +124,7 @@
 ### P4 — `api/routes/handshake.py` + `api/middleware/security.py` — HMAC bytes/str несоответствие
 
 - [x] **Файл:** `api/routes/handshake.py`, `api/middleware/security.py`
-- [ ] **Проблема:**
+- [x] **Проблема:**
   ```python
   # handshake.py — генерирует ключ как строку:
   session_key = hmac.new(secret.encode(), session_id.encode(), hashlib.sha256).hexdigest()
@@ -148,7 +148,7 @@
 ### P5 — `db/migrations` — нет таблицы `evo_sessions`
 
 - [x] **Файл:** Новая миграция `db/migrations/005_sessions.sql`
-- [ ] **Проблема:**
+- [x] **Проблема:**
   `api/routes/handshake.py` пишет в таблицу `evo_sessions`:
   ```python
   await conn.execute(
@@ -158,7 +158,7 @@
   Таблица `evo_sessions` отсутствует во всех 4 миграциях (`001`–`004`).
   При деплое первый же запрос к `handshake` упадёт:
   `asyncpg.exceptions.UndefinedTableError: relation "evo_sessions" does not exist`
-- [ ] **Правка:** Создать `db/migrations/005_sessions.sql`:
+- [x] **Правка:** Создать `db/migrations/005_sessions.sql`:
   ```sql
   CREATE TABLE IF NOT EXISTS evo_sessions (
       session_id   TEXT PRIMARY KEY,
@@ -188,7 +188,7 @@
   По спецификации (`SLEEP_MODE.md`, `SCL_FRACTAL_PROTOCOL.md` раздел 19):
   `source_type` = `github|npm|pypi|n8n|official|cli_plugin`
   `"ai_search"` — не тип источника. Admin UI фильтры по `source_type` вернут пустые результаты.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```python
   def _detect_source_type(url: str) -> str:
       if not url:
@@ -229,7 +229,7 @@
   LLM не генерирует семантические векторы через текстовый промпт.
   Возвращает псевдослучайный или детерминированный массив — не смысловой вектор.
   Поиск по `pgvector` (`<=>` cosine distance) с такими векторами семантически бессмысленен.
-- [ ] **Варианты правки (на выбор Архитектора):**
+- [x] **Варианты правки (на выбор Архитектора):**
   ```
   A) Gemini embedContent API — РЕКОМЕНДУЕТСЯ (Gemini уже primary в ai_router.json):
      POST https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent
@@ -255,7 +255,7 @@
   # Та же ошибка что в archivist.py (P3):
   await _type_b(parent_dict, output, applied_stack, applied_stack, vector, original_tz)
   ```
-- [ ] **Правка:** Исправить одновременно с P3:
+- [x] **Правка:** Исправить одновременно с P3:
   ```python
   parent_stacks = parent_dict.get("applicable_stacks", [])
   await _type_b(parent_dict, output, applied_stack, parent_stacks, vector, original_tz)
@@ -274,7 +274,7 @@
   ```
   Если флагман не передал `original_tz` — YMS-MMM верифицирует вывод против самого себя.
   Верификация всегда пройдёт. Любой мусор запишется в базу как "ideal".
-- [ ] **Правка (вариант А — рекомендуется):**
+- [x] **Правка (вариант А — рекомендуется):**
   ```python
   # Сделать обязательным в Pydantic схеме:
   class ResultRequest(BaseModel):
@@ -298,7 +298,7 @@
   ```
   `docker-compose.yml` запускает `uvicorn --workers 4`.
   Каждый воркер имеет свой `_rate_store` — rate limiting не работает совсем.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```python
   # Через Redis (уже в стеке):
   async def check_rate_limit(api_key: str) -> bool:
@@ -316,14 +316,14 @@
 ### P11 — `site/index.html` + отсутствует `api/routes/register.py`
 
 - [x] **Файл:** `site/index.html`, новый `api/routes/register.py`, `api/main.py`
-- [ ] **Проблема:**
+- [x] **Проблема:**
   ```javascript
   // Текущий код в site/index.html:
   // TODO: POST /api/v1/register email → выдать ключ
   ```
   Эндпоинт `/api/v1/register` не существует. При деплое кнопка "Получить ключ" не работает.
   Пользователь вводит email → ничего не происходит.
-- [ ] **Правка:** Создать `api/routes/register.py`:
+- [x] **Правка:** Создать `api/routes/register.py`:
   ```python
   @router.post("/api/v1/register")
   async def register(email: str):
@@ -355,7 +355,7 @@
   ```
   В `routing_rules` этот task отсутствует.
   Роутер упадёт на дефолт primary или выбросит `KeyError` в зависимости от реализации.
-- [ ] **Правка:** Добавить в `routing_rules`:
+- [x] **Правка:** Добавить в `routing_rules`:
   ```json
   "knowledge_collection": "primary"
   ```
@@ -370,7 +370,7 @@
 - [x] **Файл:** `db/migrations/001_init.sql` или `005_sessions.sql`
 - [x] **Проблема:** `notify_architect` делает `SELECT WHERE status='pending'` без индекса.
   При росте уведомлений — полный seq scan.
-- [ ] **Правка:**
+- [x] **Правка:**
   ```sql
   CREATE INDEX IF NOT EXISTS evo_notif_status_idx
       ON evo_notifications (status)
@@ -390,7 +390,7 @@
   R2 требует AWS Signature v4. Без неё все запросы → 403 Forbidden.
   В `PROJECT_MAP.md` это отмечено как "нужна реализация", но в коде нет даже предупреждения.
   При деплое с R2 — тихая ошибка, шарды не записываются.
-- [ ] **Правка (минимальная — заглушка с предупреждением):**
+- [x] **Правка (минимальная — заглушка с предупреждением):**
   ```python
   async def _r2_write(self, path: str, data: bytes) -> bool:
       raise NotImplementedError(
@@ -407,21 +407,21 @@
 
 - [x] **Файл:** `README.md`
 - [x] **Проблема:** Навигационная таблица содержит `v3.0` вместо актуального `v3.1`.
-- [ ] **Правка:** Заменить `v3.0` → `v3.1` в строке навигации IMPLEMENTATION_PLAN.
+- [x] **Правка:** Заменить `v3.0` → `v3.1` в строке навигации IMPLEMENTATION_PLAN.
 
 ---
 
 ### P16 — `core/archivist.py::_generate_id` — `science[:2]` для не-ASCII корней
 
 - [x] **Файл:** `core/archivist.py`, `SCL_SYMBOLIC_NOTATION.md`
-- [ ] **Проблема:**
+- [x] **Проблема:**
   ```python
   sym = science[:2]  # "Технология" → "Те" вместо нотационного символа
   ```
   Нотация в `SCL_SYMBOLIC_NOTATION.md`: `τ^{auto^2}_{zp_0047}` — предполагает
   2-символьные латинские/греческие коды из 32 корней.
   При русских названиях макро-корней ID будет нечитаем и несовместим с нотацией.
-- [ ] **Правка:** Добавить маппинг 32 корней → 2-символьные коды:
+- [x] **Правка:** Добавить маппинг 32 корней → 2-символьные коды:
   ```python
   ROOT_CODES = {
       "Технология": "Tc", "Математика": "Mt", "Физика": "Ph",
