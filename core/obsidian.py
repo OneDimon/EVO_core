@@ -104,17 +104,20 @@ async def _archive_delta(delta_type: str, output: str, original_tz: str,
             )
         if parent:
             parent_dict = dict(parent)
+            # N2 fix: vector вычисляется ДО if/else.
+            # Ранее ai_router импортировался как r только в блоке "A" →
+            # при delta_type=="B" возникал NameError: name "r" is not defined.
+            # ai_router уже импортирован в начале файла.
+            vector = await ai_router.embed(output[:400])
+
             if delta_type == "A":
                 from core.archivist import _type_a
-                from core.ai_router import ai_router as r
-                vector = await r.embed(output[:400])
                 await _type_a(parent_dict, output, applied_stack, vector)
                 log.info(f"[Obsidian] Тип А: обновлён {parent_id}")
             else:
                 from core.archivist import _type_b
-                vector = await r.embed(output[:400])
                 # P8 fix: new_stack = текущий applied_stack
-                #         applied_stack = стек родительского символа
+                #         parent_stacks = стек родительского символа
                 parent_stacks = parent_dict.get('applicable_stacks', [])
                 await _type_b(parent_dict, output, applied_stack,
                                parent_stacks, vector, original_tz)
