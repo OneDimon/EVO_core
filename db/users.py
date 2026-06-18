@@ -9,17 +9,36 @@ log = logging.getLogger("evo.users")
 
 
 async def create_user(email: str, plan: str = "free") -> dict:
-    """Создаёт пользователя, возвращает API ключ."""
+    """
+    Создаёт пользователя, возвращает API ключ.
+    N3 fix: при конфликте email — возвращает существующий ключ из БД.
+    Ранее: ON CONFLICT DO UPDATE SET plan=$3 + RETURNING api_key
+    возвращал новый несохранённый ключ ($2) → пользователь получал
+    ключ которого нет в БД → 403 при всех запросах.
+    """
     api_key = secrets.token_hex(32)
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Сначала пробуем вставить нового пользователя
         row = await conn.fetchrow("""
             INSERT INTO evo_users (email, api_key, plan)
             VALUES ($1, $2, $3)
-            ON CONFLICT (email) DO UPDATE SET plan=$3
+            ON CONFLICT (email) DO NOTHING
             RETURNING id, email, api_key, plan, created_at
         """, email, api_key, plan)
-    log.info(f"[Users] Создан пользователь: {email} plan={plan}")
+
+        if row is None:
+            # Пользователь уже существует — возвращаем существующий ключ
+            # Обновляем план если передан новый
+            row = await conn.fetchrow("""
+                UPDATE evo_users SET plan=$2
+                WHERE email=$1
+                RETURNING id, email, api_key, plan, created_at
+            """, email, plan)
+            log.info(f"[Users] Существующий пользователь: {email}, план обновлён до {plan}")
+        else:
+            log.info(f"[Users] Новый пользователь: {email} plan={plan}")
+
     return dict(row)
 
 
