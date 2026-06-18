@@ -4,6 +4,7 @@
 
 > **Текущий пункт плана:** ФАЗА 3 → `[ ] Деплой на VPS`
 > Все пункты ниже закрыть `[x]` перед деплоем.
+> **Прогресс 2026-06-18:** N1-N5 🔴 закрыты. N6-N15 в работе.
 > **Правило:** выполнил → поставь [x] здесь. Не переписывать файл целиком.
 
 ---
@@ -257,11 +258,11 @@
 
 | # | Приоритет | Файл(ы) | Статус |
 |---|-----------|---------|--------|
-| N1 | 🔴 | `005_sessions.sql`, `handshake.py` | [ ] |
-| N2 | 🔴 | `core/obsidian.py` | [ ] |
-| N3 | 🔴 | `db/users.py` | [ ] |
-| N4 | 🔴 | `core/librarian.py`, `api/routes/query.py` | [ ] |
-| N5 | 🔴 | `core/archivist.py` | [ ] |
+| N1 | 🔴 | `005_sessions.sql`, `handshake.py` | [x] ✓ 2026-06-18 |
+| N2 | 🔴 | `core/obsidian.py` | [x] ✓ 2026-06-18 |
+| N3 | 🔴 | `db/users.py` | [x] ✓ 2026-06-18 |
+| N4 | 🔴 | `core/librarian.py`, `api/routes/query.py` | [x] ✓ 2026-06-18 |
+| N5 | 🔴 | `core/archivist.py` | [x] ✓ 2026-06-18 Fx/Fl/Is |
 | N6 | 🟡 | `api/routes/hook_reply.py` | [ ] |
 | N7 | 🟡 | `core/sleep_mode.py` | [ ] |
 | N8 | 🟡 | `api/main.py` | [ ] |
