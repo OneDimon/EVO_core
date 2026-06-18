@@ -56,15 +56,13 @@ async def search(query_text: str, plan_steps: list[str],
                 "body_loaded": False
             }
 
-    # Сохраняем план в Redis — step_done читает отсюда
+    # N4 fix: кеширование плана убрано из librarian — делается в query.py.
+    # Причина: два create_task с одинаковым session_id → race condition.
+    # query.py владеет полным контекстом и сохраняет план сам.
     plan_for_redis = [
         {"symbol_id": sym['id'], "label": sym['label'], "step": i+1}
         for i, sym in enumerate(symbols[:len(plan_steps)])
     ]
-    if plan_for_redis and session_id:
-        from db.redis_client import cache_session_plan
-        import asyncio
-        asyncio.create_task(cache_session_plan(session_id, plan_for_redis))
 
     return {
         "scenario": scenario,
