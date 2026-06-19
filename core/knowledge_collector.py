@@ -187,14 +187,16 @@ async def _search_for_gap(gap: dict) -> list[dict]:
 
     # Формируем поисковый запрос под тип зоны
     if gap_type == "zero_symbols_in_root":
+        # N12 fix: root теперь приходит как русское название макро-корня
+        # (ключ из ROOT_CODES, например "Технология", "Математика"),
+        # а не греческий символ. Старая расшифровка Φ/Λ/M/γ удалена.
         query = (
             f"Find top 3 most popular open source tools, libraries or techniques "
-            f"in the knowledge domain '{root}' (from: Φ=Philosophy/Logic, "
-            f"Λ=Linguistics, M=Mathematics, γ=Physics, ζ=Chemistry, β=Biology, "
-            f"η=Neuroscience/Psychology, κ=Cybernetics/Algorithms, ε=Economics, "
-            f"τ=Technology/Engineering, σ=Sociology/Law, ...). "
+            f"in the knowledge domain '{root}' (a macro-root of the EVO-core "
+            f"fractal knowledge tree, e.g. Технология=Technology, "
+            f"Математика=Mathematics, ИИ=AI, Безопасность=Security). "
             f"For each return JSON: {{\"label\": \"задача: X | лекарство: Y\", "
-            f"\"science\": \"...\", \"section\": \"...\", \"subsection\": \"...\", "
+            f"\"science\": \"{root}\", \"section\": \"...\", \"subsection\": \"...\", "
             f"\"source_url\": \"...\", \"source_rating\": N, "
             f"\"applicable_stacks\": [...]}}. "
             f"Return ONLY a JSON array."
