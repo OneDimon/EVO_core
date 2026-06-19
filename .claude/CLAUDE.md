@@ -1,7 +1,7 @@
 # EVO-core — Agent Instructions
 
 > 🚀 **НАЧНИ ЗДЕСЬ:** Прочитай [`AI_ONBOARDING.md`](AI_ONBOARDING.md)
-> ⚠️ **ПЕРЕД ПРАВКОЙ:** Прочитай [`AUDIT_BEFORE_DEPLOY.md`](AUDIT_BEFORE_DEPLOY.md) (P1-P16 ✅) и [`AUDIT_BEFORE_PHASE3_DEPLOY.md`](AUDIT_BEFORE_PHASE3_DEPLOY.md) — новые баги N1-N15 🔴 — полная карта проекта, схема работы, статусы блоков, правила разработки.
+> ✅ **АУДИТ ЗАВЕРШЁН:** [`AUDIT_BEFORE_DEPLOY.md`](AUDIT_BEFORE_DEPLOY.md) (P1-P16 ✅) и [`AUDIT_BEFORE_PHASE3_DEPLOY.md`](AUDIT_BEFORE_PHASE3_DEPLOY.md) (N1-N15 ✅) — все известные баги закрыты. Проект готов к деплою. — полная карта проекта, схема работы, статусы блоков, правила разработки.
 
 > Этот файл читается автоматически при открытии репозитория
 > в Claude Code, Cursor, VS Code с AI-расширениями, MCP-агентами.
