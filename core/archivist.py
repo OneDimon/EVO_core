@@ -70,8 +70,11 @@ async def _type_a(existing: dict, new_output: str,
     new_shard = f"/evo/{existing['science'][:3].upper()}/{old_id}_v2.zst"
     await write_cell("", new_shard, new_output)
 
-    # Обновляем основной символ
-    await update_symbol_type_a(old_id, new_shard, evolution_note, old_id + "_pre")
+    # N9 fix: проверяем результат — update_symbol_type_a теперь возвращает bool
+    applied = await update_symbol_type_a(old_id, new_shard, evolution_note, old_id + "_pre")
+    if not applied:
+        log.warning(f"[Тип А] {old_id}: UPDATE не применился (concurrent update) — "
+                     f"shard {new_shard} записан, но символ не обновлён в БД")
 
     # Добавляем applied_stack в applicable_stacks
     if applied_stack:
