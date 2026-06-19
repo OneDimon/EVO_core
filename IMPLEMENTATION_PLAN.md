@@ -566,6 +566,7 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 - [x] 3D-глобус знаний — Two.js в `site/index.html` (узлы=символы, пульсация=R_f, лигатуры)
 - [x] nginx конфиг + docker-compose site-сервис (`site/nginx.conf`, `docker-compose.yml`)
 - [x] MCP Registry манифест (`site/mcp-manifest.json`)
+- [x] Аудиты P1-P16 и N1-N15 закрыты — код готов к деплою
 - [ ] Деплой на VPS (домен, SSL, .env, bootstrap.py)
 - [ ] Регистрация в Anthropic MCP Registry (нужен публичный HTTPS)
 - [ ] Бесплатный период СТАРТ 🚀 (после деплоя)
