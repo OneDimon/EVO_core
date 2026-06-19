@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.middleware.security import EVOSecurityMiddleware, check_required_secrets
 from api.routes import (handshake, concierge, query, step_done,
                          result, hook_reply, admin, patch_callback,
-                         mcp, tg_webhook, register)  # P11: register добавлен
+                         mcp, tg_webhook, register, me)  # me: личный кабинет
 
 logging.basicConfig(level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
@@ -18,7 +18,7 @@ app.add_middleware(EVOSecurityMiddleware)
 
 for r in [handshake, concierge, query, step_done, result,
           hook_reply, admin, patch_callback, mcp, tg_webhook,
-          register]:  # P11: register подключён
+          register, me]:  # me: личный кабинет подключён
     app.include_router(r.router, prefix="/api/v1")
 
 @app.on_event("startup")
