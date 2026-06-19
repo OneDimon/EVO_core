@@ -280,7 +280,12 @@ async def _auto_fill_knowledge():
 
 
 async def apply_architect_choice(notif_id: int, choice: int):
-    """Применяет выбор Архитектора и отчитывается в оба канала."""
+    """
+    Применяет выбор Архитектора и отчитывается в оба канала.
+    N7 fix: при zone="auto_collection" и choice==3 ("Отклонить") —
+    реально удаляет недавно автособранные символы, а не только
+    меняет статус уведомления.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         notif = await conn.fetchrow(
@@ -292,12 +297,27 @@ async def apply_architect_choice(notif_id: int, choice: int):
         if choice < 1 or choice > len(options):
             return {"error": "invalid choice"}
         chosen = options[choice - 1]
+
+        # N7 fix: реальное действие для Канала 1 "Отклонить"
+        deleted_count = 0
+        if notif['zone'] == "auto_collection" and choice == 3:
+            result = await conn.execute("""
+                DELETE FROM scl_symbols
+                WHERE auto_collected = TRUE AND hypothesis = TRUE
+                  AND last_updated > NOW() - INTERVAL '3 hours'
+            """)
+            # asyncpg execute возвращает строку вида "DELETE N"
+            deleted_count = int(result.split()[-1]) if result else 0
+            log.info(f"[Sleep] Архитектор отклонил автосбор: удалено {deleted_count} символов")
+
         await conn.execute(
             "UPDATE evo_notifications SET status='applied', chosen=$2 WHERE id=$1",
             notif_id, choice
         )
 
     msg = f"✅ <b>Применено:</b> {chosen['description']}"
+    if deleted_count:
+        msg += f"\n🗑 Удалено символов: {deleted_count}"
 
     tg_token = os.getenv("TG_BOT_TOKEN")
     tg_chat  = os.getenv("TG_ADMIN_CHAT_ID")
