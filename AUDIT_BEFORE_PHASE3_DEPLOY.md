@@ -4,7 +4,7 @@
 
 > **Текущий пункт плана:** ФАЗА 3 → `[ ] Деплой на VPS`
 > Все пункты ниже закрыть `[x]` перед деплоем.
-> **Прогресс 2026-06-18:** N1-N5 🔴 закрыты. N6-N15 в работе.
+> **Прогресс 2026-06-18:** N1-N8 + N13 закрыты. N9-N12, N14-N15 в работе.
 > **Правило:** выполнил → поставь [x] здесь. Не переписывать файл целиком.
 
 ---
@@ -263,14 +263,14 @@
 | N3 | 🔴 | `db/users.py` | [x] ✓ 2026-06-18 |
 | N4 | 🔴 | `core/librarian.py`, `api/routes/query.py` | [x] ✓ 2026-06-18 |
 | N5 | 🔴 | `core/archivist.py` | [x] ✓ 2026-06-18 Fx/Fl/Is |
-| N6 | 🟡 | `api/routes/hook_reply.py` | [ ] |
-| N7 | 🟡 | `core/sleep_mode.py` | [ ] |
-| N8 | 🟡 | `api/main.py` | [ ] |
+| N6 | 🟡 | `api/routes/hook_reply.py` | [x] ✓ 2026-06-18 |
+| N7 | 🟡 | `core/sleep_mode.py` | [x] ✓ 2026-06-18 |
+| N8 | 🟡 | `api/main.py` | [x] ✓ 2026-06-18 |
 | N9 | 🟡 | `db/pg_client.py` | [ ] |
 | N10 | 🟡 | `core/sleep_mode.py` | [ ] |
 | N11 | 🟡 | `core/ai_router.py` | [ ] |
 | N12 | 🟡 | `core/knowledge_collector.py` | [ ] |
-| N13 | 🟢 | `api/main.py` | [ ] |
+| N13 | 🟢 | `api/main.py` | [x] ✓ 2026-06-18 (вместе с N8) |
 | N14 | 🟢 | `site/mcp-manifest.json`, `site/nginx.conf` | [ ] |
 | N15 | 🟢 | `config/ai_router.json`, `core/immune_system.py` | [ ] |
 
