@@ -105,26 +105,29 @@ async def collect_and_fill():
 async def _scan_knowledge_gaps() -> list[dict]:
     """
     Сканирует ядро и возвращает список белых зон по приоритету.
+    N12 fix: ранее поиск шёл по id LIKE 'греческий_символ%', но _generate_id
+    в archivist.py использует ROOT_CODES (латинские 2-буквенные коды, не греческие).
+    Поиск всегда возвращал count=0 для всех 32 "корней" → все они считались
+    белыми зонами на каждом цикле СОН. Теперь ищем по реальному полю science
+    (русское название макро-корня), используя те же ключи что в ROOT_CODES.
     """
     from db.pg_client import get_pool
+    from core.archivist import ROOT_CODES
     pool = await get_pool()
     gaps = []
 
     async with pool.acquire() as conn:
-        # Зона 1: макро-корни с < 3 символами
-        roots_32 = ["Φ","Λ","M","γ","ζ","β","η","κ","ε","τ",
-                    "σ","α","χ","ψ","δ","ξ","Ω","Π","Θ","Ξ",
-                    "Ψ","Σ","Δ","Γ","μ","ν","ρ","ι","θ","π","ω","λ"]
-
-        for root in roots_32:
+        # Зона 1: макро-корни (из ROOT_CODES) с < 3 символами
+        # N12 fix: ищем по science (русское название), а не по id LIKE греческий%
+        for science_name in ROOT_CODES.keys():
             count = await conn.fetchval(
-                "SELECT COUNT(*) FROM scl_symbols WHERE id LIKE $1 AND is_legacy=FALSE",
-                f"{root}%"
+                "SELECT COUNT(*) FROM scl_symbols WHERE science=$1 AND is_legacy=FALSE",
+                science_name
             )
             if count < 3:
                 gaps.append({
                     "type": "zero_symbols_in_root",
-                    "root": root,
+                    "root": science_name,
                     "current_count": count,
                     "priority": 1
                 })
