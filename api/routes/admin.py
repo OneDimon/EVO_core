@@ -120,3 +120,67 @@ async def get_audit_log(limit: int = 50,
             FROM evo_audit_log ORDER BY ts DESC LIMIT $1
         """, limit)
     return {"audit_log": [dict(r) for r in rows]}
+
+
+# ── Сводная статистика ядра — для админ-панели ────────────────────────────────
+
+@router.get("/admin/stats")
+async def get_core_stats(token: str = Header(None, alias="X-Admin-Token")):
+    """
+    Сводная статистика Языка-Библиотеки и пользователей.
+    Источники: scl_symbols, evo_users, evo_sessions, evo_notifications.
+    """
+    _check_admin(token)
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        total_symbols = await conn.fetchval(
+            "SELECT COUNT(*) FROM scl_symbols WHERE is_legacy=FALSE"
+        )
+        legacy_symbols = await conn.fetchval(
+            "SELECT COUNT(*) FROM scl_symbols WHERE is_legacy=TRUE"
+        )
+        auto_collected = await conn.fetchval(
+            "SELECT COUNT(*) FROM scl_symbols WHERE auto_collected=TRUE AND is_legacy=FALSE"
+        )
+        ligature_candidates = await conn.fetchval(
+            "SELECT COUNT(*) FROM scl_symbols WHERE confirmed_by >= 3 AND is_legacy=FALSE"
+        )
+        by_root = await conn.fetch(
+            "SELECT science, COUNT(*) as cnt, AVG(rating_frequency)::float as avg_rf "
+            "FROM scl_symbols WHERE is_legacy=FALSE "
+            "GROUP BY science ORDER BY cnt DESC LIMIT 12"
+        )
+        top_symbols = await conn.fetch(
+            "SELECT id, label, rating_frequency, confirmed_by FROM scl_symbols "
+            "WHERE is_legacy=FALSE ORDER BY rating_frequency DESC LIMIT 8"
+        )
+        pending_notifications = await conn.fetchval(
+            "SELECT COUNT(*) FROM evo_notifications WHERE status='pending'"
+        )
+        users_by_plan = await conn.fetch(
+            "SELECT plan, COUNT(*) as cnt FROM evo_users WHERE is_active=TRUE GROUP BY plan"
+        )
+        total_users = await conn.fetchval("SELECT COUNT(*) FROM evo_users WHERE is_active=TRUE")
+        active_sessions = await conn.fetchval(
+            "SELECT COUNT(*) FROM evo_sessions WHERE is_active=TRUE AND expires_at > NOW()"
+        )
+
+    return {
+        "library": {
+            "total_symbols": total_symbols,
+            "legacy_symbols": legacy_symbols,
+            "auto_collected_channel1": auto_collected,
+            "ligature_candidates": ligature_candidates,
+            "by_macro_root": [dict(r) for r in by_root],
+            "top_by_rating": [dict(r) for r in top_symbols],
+        },
+        "operations": {
+            "pending_architect_notifications": pending_notifications,
+            "active_flagship_sessions": active_sessions,
+        },
+        "users": {
+            "total_active": total_users,
+            "by_plan": {r["plan"]: r["cnt"] for r in users_by_plan},
+        },
+    }
