@@ -1,4 +1,4 @@
-"""EVO-core API v0.3 — Фаза 2 (все блоки подключены)."""
+"""EVO-core API v0.4 — Фаза 3/4 (Канал 1, безопасность, сайт подключены)."""
 import logging, asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,7 +28,7 @@ async def startup():
     await init_config_table()
     # Запускаем планировщик СОН
     asyncio.create_task(_sleep_scheduler())
-    logging.getLogger("evo").info("EVO-core Phase 2 started")
+    logging.getLogger("evo").info("EVO-core Phase 3/4 started")
 
 async def _sleep_scheduler():
     """APScheduler: пересчитывает окно СОН и запускает фоновые задачи."""
@@ -73,6 +73,8 @@ async def admin_ui():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "phase": "2",
+    # N8 fix: было "phase": "2" — устарело, проект на Фазе 3/4
+    return {"status": "ok", "phase": "4", "version": app.version,
             "blocks": {"01":"active","02":"active","03":"active",
-                       "06":"active","07":"active","sleep":"scheduled"}}
+                       "06":"active","07":"active","sleep":"scheduled",
+                       "channel1":"active","security":"active"}}
