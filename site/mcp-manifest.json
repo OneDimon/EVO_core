@@ -12,7 +12,7 @@
   },
   "server": {
     "type": "streamable-http",
-    "url": "https://evo-core.io/mcp",
+    "url": "https://evo-core.io/api/v1/mcp",
     "protocol": "json-rpc-2.0"
   },
   "auth": {
