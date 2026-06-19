@@ -39,11 +39,11 @@
       "cartridge_assembly": "primary",
       "yms_verification": "primary",
       "obsidian_analysis": "primary",
-      "immune_system_patch": "primary",
       "bootstrap_fill": "primary",
       "background_assimilation": "fallback_chain[1]",
       "sleep_mode": "fallback_chain[1]",
-      "knowledge_collection": "primary"
+      "knowledge_collection": "primary",
+      "immune_patch": "primary"
     },
     "retry_policy": {
       "max_retries": 3,
