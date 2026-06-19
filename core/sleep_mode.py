@@ -121,7 +121,26 @@ async def _sleep_cycle():
             break
         log.info(f"[Sleep] Задача: {name}")
         try:
-            await fn()
+            # N10 fix: ранее await fn() выполнялся без отмены —
+            # watchdog мог установить _sleep_active=False, но текущая
+            # задача (особенно _auto_fill_knowledge с внешними HTTP-запросами)
+            # дорабатывала до конца. Теперь задача оборачивается в Task
+            # и отменяется если _sleep_active стал False во время выполнения.
+            task = asyncio.create_task(fn())
+            while not task.done():
+                if not _sleep_active:
+                    task.cancel()
+                    log.warning(f"[Sleep] Задача '{name}' отменена — нагрузка превысила порог")
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    break
+                await asyncio.sleep(1)
+            else:
+                await task  # получить результат/исключение завершённой задачи
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             log.error(f"[Sleep] Ошибка в '{name}': {e}")
 
