@@ -94,11 +94,17 @@ async def increment_rating(symbol_id: str):
         """, symbol_id)
 
 async def update_symbol_type_a(symbol_id: str, new_shard_path: str,
-                                evolution_note: str, old_symbol_id: str):
-    """Тип А: перезапись + сохранение старого в legacy_symbols."""
+                                evolution_note: str, old_symbol_id: str) -> bool:
+    """
+    Тип А: перезапись + сохранение старого в legacy_symbols.
+    N9 fix: добавлена проверка rowcount. Subquery и WHERE читают version_ts
+    в разных snapshot при высокой нагрузке — конкурентный UPDATE мог молча
+    применить 0 строк без какой-либо ошибки или предупреждения.
+    Возвращает True если обновление реально применилось.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await conn.execute("""
+        result = await conn.execute("""
             UPDATE scl_symbols SET
               shard_path = $2,
               evolution_note = $3,
@@ -107,3 +113,12 @@ async def update_symbol_type_a(symbol_id: str, new_shard_path: str,
               version_ts = NOW(), last_updated = NOW()
             WHERE id = $1 AND version_ts = (SELECT version_ts FROM scl_symbols WHERE id = $1)
         """, symbol_id, new_shard_path, evolution_note, old_symbol_id)
+
+    # asyncpg.execute() возвращает строку вида "UPDATE 1" или "UPDATE 0"
+    applied = result.split()[-1] != "0" if result else False
+    if not applied:
+        log.warning(
+            f"[pg_client] update_symbol_type_a: concurrent update detected "
+            f"для {symbol_id} — UPDATE применил 0 строк (version_ts race)"
+        )
+    return applied
