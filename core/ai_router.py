@@ -26,6 +26,7 @@ class AIRouter:
                       "messages": [{"role": "user", "content": prompt}],
                       "stream": False}
             )
+            resp.raise_for_status()  # N11 fix: явная ошибка вместо KeyError при 429/500
             return resp.json()["message"]["content"]
 
         elif "gemini" in provider:
@@ -34,6 +35,7 @@ class AIRouter:
             resp = await self._client.post(url, json={
                 "contents": [{"parts": [{"text": prompt}]}]
             })
+            resp.raise_for_status()  # N11 fix: явная ошибка вместо KeyError при 429/500
             return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 
         else:
@@ -45,6 +47,7 @@ class AIRouter:
                 json={"model": provider_cfg["model"],
                       "messages": [{"role": "user", "content": prompt}]}
             )
+            resp.raise_for_status()  # N11 fix: явная ошибка вместо KeyError при 429/500
             return resp.json()["choices"][0]["message"]["content"]
 
     async def _call_with_fallback(self, prompt: str, task: str) -> str:
