@@ -562,8 +562,10 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 - [x] Admin UI (`admin_ui.html` — React, конфиги + шарды + TG + audit log)
 - [x] Система ключей — пользователи + API keys (`db/users.py` + `api/routes/admin.py`)
 - [x] Telegram webhook — приём ответов Архитектора (`api/routes/tg_webhook.py`)
-- [x] Публичный сайт Dark High-Tech (`site/index.html` — Hero, конвейер, Compare, 3D-глобус, Pricing)
-- [x] 3D-глобус знаний — Two.js в `site/index.html` (узлы=символы, пульсация=R_f, лигатуры)
+- [x] Публичный сайт — `site/index.html` marketing-редизайн 2026 ("умная броня для ИИ-инструмента"), выгоды без объяснения внутренней механики
+- [x] Личный кабинет — `site/dashboard.html`, вход по API-ключу, статистика через `/api/v1/me`
+- [x] Admin-панель расширена — `admin_ui.html`: LibraryStatsCard, TopSymbolsCard, UsersStatsCard через `/api/v1/admin/stats`
+- [x] Backend кабинетов — `api/routes/me.py`, `api/routes/admin.py::get_core_stats`
 - [x] nginx конфиг + docker-compose site-сервис (`site/nginx.conf`, `docker-compose.yml`)
 - [x] MCP Registry манифест (`site/mcp-manifest.json`)
 - [x] Аудиты P1-P16 и N1-N15 закрыты — код готов к деплою
