@@ -251,6 +251,111 @@ function AuditLog({ token }) {
   );
 }
 
+
+function LibraryStatsCard({ token }) {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    if (token) apiFetch('/api/v1/admin/stats', {}, token).then(setStats).catch(()=>{});
+  }, [token]);
+
+  if (!stats) return (
+    <div className="card">
+      <h3>Язык-Библиотека</h3>
+      <div className="stat"><span className="stat-label">Загрузка…</span></div>
+    </div>
+  );
+
+  const lib = stats.library || {};
+  const ops = stats.operations || {};
+
+  return (
+    <div className="card">
+      <h3>Язык-Библиотека</h3>
+      <div className="stat">
+        <span className="stat-label">Активных символов</span>
+        <span className="stat-value">{lib.total_symbols}</span>
+      </div>
+      <div className="stat">
+        <span className="stat-label">Легаси (заменённых)</span>
+        <span className="stat-value">{lib.legacy_symbols}</span>
+      </div>
+      <div className="stat">
+        <span className="stat-label">Собрано Каналом 1</span>
+        <span className="stat-value">{lib.auto_collected_channel1}</span>
+      </div>
+      <div className="stat">
+        <span className="stat-label">Кандидатов на лигатуру</span>
+        <span className={lib.ligature_candidates > 0 ? 'stat-ok' : 'stat-value'}>
+          {lib.ligature_candidates}
+        </span>
+      </div>
+      <div className="stat">
+        <span className="stat-label">Ждут решения Архитектора</span>
+        <span className={ops.pending_architect_notifications > 0 ? 'stat-warn' : 'stat-value'}>
+          {ops.pending_architect_notifications}
+        </span>
+      </div>
+      <div className="stat">
+        <span className="stat-label">Активных сессий флагмана</span>
+        <span className="stat-value">{ops.active_flagship_sessions}</span>
+      </div>
+    </div>
+  );
+}
+
+function TopSymbolsCard({ token }) {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    if (token) apiFetch('/api/v1/admin/stats', {}, token).then(setStats).catch(()=>{});
+  }, [token]);
+
+  const top = stats?.library?.top_by_rating || [];
+
+  return (
+    <div className="card">
+      <h3>Топ символов по R_f</h3>
+      {top.length === 0 && <div className="stat"><span className="stat-label">Нет данных</span></div>}
+      {top.map(s => (
+        <div className="stat" key={s.id}>
+          <span className="stat-label" style={{fontFamily:'JetBrains Mono, monospace', fontSize:11}}>
+            {s.id}
+          </span>
+          <span className="stat-ok">R_f={s.rating_frequency} · c={s.confirmed_by}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UsersStatsCard({ token }) {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    if (token) apiFetch('/api/v1/admin/stats', {}, token).then(setStats).catch(()=>{});
+  }, [token]);
+
+  const users = stats?.users || {};
+  const byPlan = users.by_plan || {};
+
+  return (
+    <div className="card">
+      <h3>Пользователи</h3>
+      <div className="stat">
+        <span className="stat-label">Всего активных</span>
+        <span className="stat-value">{users.total_active ?? '—'}</span>
+      </div>
+      {Object.entries(byPlan).map(([plan, cnt]) => (
+        <div className="stat" key={plan}>
+          <span className="stat-label">План: {plan}</span>
+          <span className="stat-value">{cnt}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useAdminToken();
   const [tokenInput, setTokenInput] = useState('');
@@ -295,6 +400,9 @@ function App() {
       <div className="container">
         <div className="grid">
           <StatusCard token={token}/>
+          <LibraryStatsCard token={token}/>
+          <TopSymbolsCard token={token}/>
+          <UsersStatsCard token={token}/>
           <ShardTestCard token={token}/>
           <TelegramSetup token={token}/>
           <ConfigPanel token={token}/>
