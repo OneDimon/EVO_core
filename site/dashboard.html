@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Кабинет — EVO-core</title>
+<meta name="robots" content="noindex"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0B0D; --surface:#15171C; --surface-2:#1B1E24;
+  --line:#262931; --line-soft:#1D2026;
+  --text:#F3F4F2; --text-soft:#9CA0A8; --text-faint:#5C6068;
+  --signal:#C6FF5E; --signal-deep:#9FDB2E; --violet:#8B7CF6;
+  --warn:#E5B84B; --danger:#E5594B; --radius:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:15.5px;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.wrap{max-width:980px;margin:0 auto;padding:0 28px}
+@media (max-width:640px){.wrap{padding:0 18px}}
+
+header.nav{position:sticky;top:0;z-index:50;background:rgba(10,11,13,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--line-soft)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--signal),var(--violet));display:flex;align-items:center;justify-content:center}
+.brand-mark svg{width:14px;height:14px}
+.brand-name{font-weight:700;font-size:16.5px;letter-spacing:-.02em}
+.btn{font-weight:600;font-size:13.5px;padding:9px 16px;border-radius:10px;border:1px solid var(--line);cursor:pointer;background:var(--surface-2);color:var(--text)}
+.btn:hover{border-color:var(--text-faint)}
+.btn-signal{background:var(--signal);color:#08110a;border:none}
+.btn-signal:hover{background:var(--signal-deep)}
+
+main{padding:48px 0 80px}
+
+/* gate (вход по ключу) */
+.gate{max-width:440px;margin:80px auto 0;text-align:center}
+.gate h1{font-size:1.7rem;font-weight:800;letter-spacing:-.02em;margin-bottom:10px}
+.gate p{color:var(--text-soft);font-size:14.5px;margin-bottom:28px}
+.gate-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:8px;display:flex;gap:8px}
+.gate input{flex:1;background:transparent;border:none;padding:13px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--text)}
+.gate input:focus{outline:none}
+.gate-err{margin-top:14px;font-size:13.5px;color:var(--danger);display:none}
+.gate-foot{margin-top:22px;font-size:13px;color:var(--text-faint)}
+.gate-foot a{color:var(--signal);text-decoration:underline}
+
+/* dashboard (после входа) */
+#dash{display:none}
+.dash-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;flex-wrap:wrap;gap:16px}
+.dash-head h1{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
+.dash-head .sub{color:var(--text-soft);font-size:14.5px}
+.plan-pill{display:inline-flex;align-items:center;gap:7px;background:rgba(198,255,94,.1);border:1px solid rgba(198,255,94,.25);
+  color:var(--signal);font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:30px;text-transform:uppercase;letter-spacing:.05em}
+.plan-pill.is-pro{background:rgba(139,124,246,.1);border-color:rgba(139,124,246,.3);color:var(--violet)}
+
+.cardgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px}
+@media (max-width:760px){.cardgrid{grid-template-columns:1fr 1fr}}
+@media (max-width:480px){.cardgrid{grid-template-columns:1fr}}
+.scard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.scard .slab{font-size:12.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.scard .sval{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;color:var(--signal)}
+.scard .ssub{font-size:12.5px;color:var(--text-faint);margin-top:4px}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px;margin-bottom:20px}
+.panel h2{font-size:15.5px;font-weight:700;margin-bottom:18px;letter-spacing:-.01em}
+.row{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line-soft)}
+.row:last-child{border-bottom:none}
+.row .rk{color:var(--text-soft);font-size:14px}
+.row .rv{font-family:'JetBrains Mono',monospace;font-size:13.5px}
+
+.keybox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.keybox span{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--text-soft);flex:1;overflow:hidden;text-overflow:ellipsis}
+.copybtn{font-size:12px;font-weight:600;color:var(--signal);background:none;border:none;cursor:pointer}
+
+.bar-track{background:var(--bg);border-radius:8px;height:8px;overflow:hidden;margin-top:8px}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--signal-deep),var(--signal));border-radius:8px;transition:width .4s ease}
+
+.connectors-list{display:flex;flex-wrap:wrap;gap:8px}
+.ctag{display:flex;align-items:center;gap:7px;background:var(--bg);border:1px solid var(--line);padding:8px 14px;border-radius:10px;font-size:13.5px}
+.ctag .cdot{width:6px;height:6px;border-radius:50%;background:var(--signal)}
+
+.upsell{background:linear-gradient(135deg,#15180f,#0F1410);border:1px solid var(--line);border-radius:var(--radius);padding:26px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.upsell h3{font-size:16px;font-weight:700;margin-bottom:4px}
+.upsell p{font-size:13.5px;color:var(--text-soft)}
+
+.loading{text-align:center;padding:80px 0;color:var(--text-faint);font-size:14px}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12L10 18L20 6" stroke="#08110a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="brand-name">EVO-core</span>
+    </a>
+    <button class="btn" id="logoutBtn" style="display:none" onclick="logout()">Выйти</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <!-- ВХОД ПО КЛЮЧУ -->
+    <div class="gate" id="gate">
+      <h1>Вход в кабинет</h1>
+      <p>Введите ключ, который вы получили при подключении</p>
+      <div class="gate-box">
+        <input id="keyInput" type="text" placeholder="EVO_API_KEY" class="mono" autocomplete="off"/>
+        <button class="btn btn-signal" onclick="loginWithKey()">Войти</button>
+      </div>
+      <div class="gate-err" id="gateErr"></div>
+      <div class="gate-foot">Нет ключа? <a href="index.html#get-key">Получить бесплатно →</a></div>
+    </div>
+
+    <div class="loading" id="loadingState" style="display:none">Загружаем данные кабинета…</div>
+
+    <!-- КАБИНЕТ -->
+    <div id="dash">
+      <div class="dash-head">
+        <div>
+          <h1 id="userEmail">—</h1>
+          <div class="sub">Подключение активно · обновлено только что</div>
+        </div>
+        <span class="plan-pill" id="planPill">старт</span>
+      </div>
+
+      <div class="cardgrid">
+        <div class="scard">
+          <div class="slab">Запросов за 30 дней</div>
+          <div class="sval" id="statRequests">—</div>
+          <div class="ssub">к ядру EVO-core</div>
+        </div>
+        <div class="scard">
+          <div class="slab">Сессий флагмана</div>
+          <div class="sval" id="statSessions">—</div>
+          <div class="ssub">за 30 дней</div>
+        </div>
+        <div class="scard">
+          <div class="slab">Подключено с</div>
+          <div class="sval" id="statSince" style="font-size:1.3rem">—</div>
+          <div class="ssub" id="statLastSeen">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Использование лимита</h2>
+        <div class="row" style="border-bottom:none">
+          <span class="rk">Запросы в этом месяце</span>
+          <span class="rv" id="usageText">—</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="usageBar" style="width:0%"></div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Ваш ключ доступа</h2>
+        <div class="keybox">
+          <span id="maskedKey" class="mono">—</span>
+          <button class="copybtn" onclick="copyKey()">Скопировать полный</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Подключённые инструменты</h2>
+        <div class="connectors-list">
+          <div class="ctag"><span class="cdot"></span>Claude Code</div>
+          <div class="ctag"><span class="cdot"></span>Cursor</div>
+          <div class="ctag"><span class="cdot"></span>VS Code</div>
+          <div class="ctag"><span class="cdot"></span>n8n</div>
+          <div class="ctag"><span class="cdot"></span>ZennoPoster</div>
+        </div>
+      </div>
+
+      <div class="upsell" id="upsellBlock">
+        <div>
+          <h3>Откройте больше возможностей на Pro</h3>
+          <p>Расширенный объём, приоритетная проверка и уведомления в Telegram</p>
+        </div>
+        <a href="index.html#pricing" class="btn btn-signal">Перейти на Pro →</a>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+let currentKey = null;
+
+function showGate(errMsg){
+  document.getElementById('gate').style.display = 'block';
+  document.getElementById('dash').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+  const err = document.getElementById('gateErr');
+  if(errMsg){ err.textContent = errMsg; err.style.display='block'; }
+  else { err.style.display='none'; }
+}
+
+async function fetchMe(apiKey){
+  const res = await fetch('/api/v1/me', { headers: { 'X-API-Key': apiKey }});
+  if(!res.ok){
+    const data = await res.json().catch(()=>({}));
+    throw new Error(data.detail || 'Ключ не найден или отключён');
+  }
+  return res.json();
+}
+
+function renderDash(data, apiKey){
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('dash').style.display = 'block';
+  document.getElementById('logoutBtn').style.display = 'inline-block';
+
+  document.getElementById('userEmail').textContent = data.email;
+
+  const planPill = document.getElementById('planPill');
+  planPill.textContent = data.plan;
+  planPill.className = 'plan-pill' + (data.plan !== 'free' ? ' is-pro' : '');
+
+  document.getElementById('statRequests').textContent = data.usage.requests_30d;
+  document.getElementById('statSessions').textContent = data.usage.flagship_sessions_30d;
+
+  if(data.member_since){
+    const d = new Date(data.member_since);
+    document.getElementById('statSince').textContent = d.toLocaleDateString('ru-RU', {day:'numeric', month:'short'});
+  }
+  document.getElementById('statLastSeen').textContent = data.last_seen
+    ? 'последний визит: ' + new Date(data.last_seen).toLocaleDateString('ru-RU')
+    : 'первый визит';
+
+  const limit = data.usage.limit_per_month;
+  const used = data.usage.requests_30d;
+  if(limit){
+    const pct = Math.min(100, Math.round((used/limit)*100));
+    document.getElementById('usageText').textContent = `${used} / ${limit}`;
+    document.getElementById('usageBar').style.width = pct + '%';
+  } else {
+    document.getElementById('usageText').textContent = `${used} / без лимита`;
+    document.getElementById('usageBar').style.width = '100%';
+  }
+
+  document.getElementById('maskedKey').textContent = data.api_key_masked;
+  document.getElementById('upsellBlock').style.display = data.plan === 'free' ? 'flex' : 'none';
+
+  currentKey = apiKey;
+}
+
+async function loginWithKey(){
+  const key = document.getElementById('keyInput').value.trim();
+  if(!key){ showGate('Введите ключ'); return; }
+
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'block';
+
+  try{
+    const data = await fetchMe(key);
+    try { localStorage.setItem('evo_api_key', key); } catch(e){}
+    renderDash(data, key);
+  }catch(e){
+    showGate(e.message);
+  }
+}
+
+function logout(){
+  try { localStorage.removeItem('evo_api_key'); } catch(e){}
+  currentKey = null;
+  showGate();
+}
+
+function copyKey(){
+  if(!currentKey) return;
+  navigator.clipboard.writeText(currentKey).then(()=>{
+    const btn = document.querySelector('.copybtn');
+    const old = btn.textContent;
+    btn.textContent = 'Скопировано ✓';
+    setTimeout(()=>btn.textContent = old, 1600);
+  });
+}
+
+// Автовход если ключ уже сохранён (например, после регистрации на главной)
+(async function init(){
+  let saved = null;
+  try { saved = localStorage.getItem('evo_api_key'); } catch(e){}
+  if(saved){
+    document.getElementById('loadingState').style.display = 'block';
+    try{
+      const data = await fetchMe(saved);
+      renderDash(data, saved);
+    }catch(e){
+      showGate();
+    }
+  } else {
+    showGate();
+  }
+})();
+</script>
+</body>
+</html>
