@@ -84,6 +84,7 @@ async def run_tests():
         if not ok: errors.append("T6")
 
         # TEST 7: Result — workability = false → rejected
+        # original_tz обязателен (P9 fix) — без него Pydantic вернёт 422, не "failed"
         r = await client.post(f"{BASE}/result", json={
             "session_id": session_id,
             "status": "completed",
@@ -91,7 +92,8 @@ async def run_tests():
             "workability_confirmed": False,
             "workability_proof": "",
             "solution_quality": "ideal",
-            "applied_stack": ["zennoposter"]
+            "applied_stack": ["zennoposter"],
+            "original_tz": "Настроить авторизацию ZennoPoster для HSR"
         })
         ok = r.status_code == 200 and r.json().get("status") == "failed"
         print(f"{'✅' if ok else '❌'} [T7] Result workability=false → rejected")
@@ -105,7 +107,8 @@ async def run_tests():
             "workability_confirmed": True,
             "workability_proof": "HTTP 200 OK on ZP test run",
             "solution_quality": "ideal",
-            "applied_stack": ["zennoposter", "n8n"]
+            "applied_stack": ["zennoposter", "n8n"],
+            "original_tz": "Настроить авторизацию ZennoPoster для HSR"
         })
         ok = r.status_code == 200 and r.json().get("status") == "verified"
         print(f"{'✅' if ok else '❌'} [T8] Result workability=true → verified + hook_query")
