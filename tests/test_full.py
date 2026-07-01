@@ -56,11 +56,12 @@ async def run():
         print("\n=== БЛОК 06: YMS-MMM + Obsidian ===")
 
         # T06: Result workability=false → reject
+        # original_tz обязателен (P9 fix) — без него 422, а не "failed"
         r = await c.post(f"{BASE}/result", json={
             "session_id": session_id, "status": "completed",
             "result": "тест", "workability_confirmed": False,
             "workability_proof": "", "solution_quality": "ideal",
-            "applied_stack": ["python"]
+            "applied_stack": ["python"], "original_tz": "тестовое задание"
         })
         results["T06_workability_reject"] = r.json().get("status") == "failed"
         print(f"  {'✅' if results['T06_workability_reject'] else '❌'} T06 Workability=false → rejected")
