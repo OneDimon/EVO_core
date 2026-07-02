@@ -55,8 +55,14 @@ def test_root_code_generator_matches_spec():
             f"должен быть ОДИН символ по SCL_SYMBOLIC_NOTATION.md"
         )
 
-    # 2. Все коды — греческие буквы, не латиница/кириллица
+    # 2. Все коды — греческие буквы, кроме ОДНОГО осознанного исключения:
+    # "Математика/Алгебра" = латинская "M" (см. SCL_FRACTAL_PROTOCOL.md §5,
+    # пункт 3 таблицы — так в исходной спецификации Архитектора, не баг).
+    KNOWN_LATIN_EXCEPTION = {"Математика/Алгебра": "M"}
     for science, code in ROOT_CODES.items():
+        if science in KNOWN_LATIN_EXCEPTION:
+            assert code == KNOWN_LATIN_EXCEPTION[science]
+            continue
         codepoint = ord(code)
         is_greek = 0x0370 <= codepoint <= 0x03FF
         assert is_greek, f"Корень '{science}' имеет код '{code}' — не греческая буква"
@@ -91,8 +97,12 @@ def test_no_latin_homoglyphs():
     from core.archivist import ROOT_CODES
 
     homoglyphs = set("ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ")  # заглавные греческие похожие на латиницу
-    bad = [(k, v) for k, v in ROOT_CODES.items() if v in homoglyphs]
-    assert not bad, f"Найдены омографы латиницы в ROOT_CODES: {bad}"
+    # "Математика/Алгебра" — единственное осознанное исключение: это уже
+    # НАСТОЯЩАЯ латиница "M" по спецификации §5, не греческий омограф.
+    KNOWN_LATIN_EXCEPTION = {"Математика/Алгебра"}
+    bad = [(k, v) for k, v in ROOT_CODES.items()
+           if v in homoglyphs and k not in KNOWN_LATIN_EXCEPTION]
+    assert not bad, f"Найдены непреднамеренные омографы латиницы в ROOT_CODES: {bad}"
     print("✅ Нет визуальных омографов латиницы в ROOT_CODES")
 
 if __name__ == "__main__":
