@@ -67,7 +67,10 @@ async def _type_a(existing: dict, new_output: str,
         f"old: {existing['label']} | new: {new_output[:200]}", "evolution_note"
     )
     old_id = existing['id']
-    new_shard = f"/evo/{existing['science'][:3].upper()}/{old_id}_v2.zst"
+    # fix: папка шарда именуется коротким символом (τ), не 3-буквенным
+    # срезом полного имени — консистентно с ID и остальными путями
+    _root_symbol = _get_root_code(existing['science'])
+    new_shard = f"/evo/{_root_symbol}/{old_id}_v2.zst"
     await write_cell("", new_shard, new_output)
 
     # N9 fix: проверяем результат — update_symbol_type_a теперь возвращает bool
@@ -97,14 +100,17 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
     """Тип Б: новый символ для других обстоятельств."""
     symbol_id = await _generate_id(parent['science'], parent['section'],
                                      parent['subsection'])
-    shard_path = f"/evo/{parent['science'][:3].upper()}/{symbol_id}.zst"
+    _root_symbol = _get_root_code(parent['science'])
+    shard_path = f"/evo/{_root_symbol}/{symbol_id}.zst"
     await write_cell("", shard_path, new_output)
     # Обновляем confirmed_in у родительского символа
     from db.pg_client import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Добавляем science родителя в confirmed_in если новая область
-        parent_sci = parent['science'][:2]
+        # fix: confirmed_in хранит КОРОТКИЙ символ (τ), как в примере
+        # LOCAL_MODEL_INSTRUCTIONS.md ("confirmed_in: [\"τ\", \"κ\", \"η\"]"),
+        # не обрезок полного имени (было science[:2] → мусор вроде "Те")
+        parent_sci = _get_root_code(parent['science'])
         await conn.execute("""
             UPDATE scl_symbols
             SET confirmed_in = array_append(confirmed_in, $2),
@@ -127,7 +133,7 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
         "evolved_from": parent['id'],
         "evolution_note": f"новые условия: стек {new_stack}",
         "applicable_stacks": applied_stack,
-        "confirmed_in": [parent['science'][:2]],
+        "confirmed_in": [_get_root_code(parent['science'])],  # короткий символ, не обрезок имени
         "shard_host": "", "shard_path": shard_path,
     })
     log.info(f"[Тип Б] Created {symbol_id}")
@@ -145,10 +151,14 @@ async def _new_symbol(output: str, applied_stack: list[str],
         source_type     — github|npm|pypi|n8n|official|cli_plugin
         auto_collected  — True если собрано в режиме СОН (Канал 1)
     """
+    # fix: classify() теперь возвращает ПОЛНОЕ каноническое имя ("Технология/Инженерия"),
+    # не голый символ. root хранится как есть в поле science (совместимо с
+    # WHERE science=$1 в knowledge_collector). Короткий символ для ID и пути
+    # выводится через _get_root_code внутри _generate_id и явно здесь для пути.
     root = await ai_router.classify(output[:300], "macro_root")
-    root = root.strip()[:2]
     symbol_id = await _generate_id(root, "new", "new")
-    shard_path = f"/evo/{root.upper()}/{symbol_id}.zst"
+    _root_symbol = _get_root_code(root)
+    shard_path = f"/evo/{_root_symbol}/{symbol_id}.zst"
     await write_cell("", shard_path, output)
     await insert_symbol({
         "id": symbol_id,
