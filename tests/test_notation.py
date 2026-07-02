@@ -67,13 +67,16 @@ def test_root_code_generator_matches_spec():
         f"Дубликаты в ROOT_CODES: {[c for c in codes if codes.count(c) > 1]}"
     )
 
-    # 4. Функция реально использует таблицу, а не собственную логику
-    assert _get_root_code("Технология") == "τ"
-    assert _get_root_code("ИИ") == ROOT_CODES["ИИ"]
+    # 4. Функция реально использует таблицу, а не собственную логику.
+    # Имена — ТОЧНО как в SCL_FRACTAL_PROTOCOL.md §5 (составные, через "/"),
+    # не сокращённые "Технология" или "ИИ" — таких ключей в каноне нет.
+    assert _get_root_code("Технология/Инженерия") == "τ"
+    assert _get_root_code("Нейронные сети/ИИ") == "ν"
+    assert _get_root_code("Математика/Алгебра") == "M"  # латиница, осознанно (см. архивист)
 
-    # 5. Неизвестный корень не роняет генерацию — возвращает валидный fallback
+    # 5. Неизвестный корень не роняет генерацию — возвращает безопасный дефолт Φ
     fallback = _get_root_code("Совершенно новая несуществующая область знаний")
-    assert len(fallback) == 1 and 0x0370 <= ord(fallback) <= 0x03FF
+    assert fallback == "Φ"
 
     print(f"✅ ROOT_CODES соответствует SCL_SYMBOLIC_NOTATION.md: "
           f"{len(ROOT_CODES)} корней, все греческие, все уникальные")
