@@ -105,9 +105,46 @@ class AIRouter:
             return _hash_fallback(text)
 
     async def classify(self, text: str, task: str) -> str:
-        """Классификация: макро-корень / Тип А/Б / и др."""
+        """
+        Классификация: макро-корень / Тип А/Б / и др.
+
+        КРИТИЧНЫЙ ФИКС: раньше промпт "macro_root" просил модель вернуть ГОЛЫЙ
+        символ (τ, κ...), но весь остальной пайплайн (ROOT_CODES, _get_root_code,
+        WHERE science=$1 в knowledge_collector) работает с ПОЛНЫМИ каноническими
+        именами ("Технология/Инженерия") как ключами. Из-за расхождения
+        _get_root_code("τ") никогда не находил ключ в словаре (там лежит
+        "Технология/Инженерия": "τ", а не "τ": "τ") — каждый новый символ
+        проваливался в fallback Φ независимо от темы.
+        Теперь классификатор возвращает ПОЛНОЕ имя, а короткий символ для ID
+        и пути на шарде выводится централизованно через _get_root_code() —
+        единственное место преобразования имя→символ во всей системе.
+        """
+        if task == "macro_root":
+            # Список имён строится из ROOT_CODES — единственного источника
+            # истины (SCL_FRACTAL_PROTOCOL.md §5) — вместо жёстко прописанного
+            # списка символов, который расходился с реальным словарём.
+            from core.archivist import ROOT_CODES
+            names = "\n".join(f"- {name}" for name in ROOT_CODES.keys())
+            prompt = (
+                "From these 32 EVO knowledge macro-roots, which ONE best fits "
+                f"this knowledge? Return ONLY the exact name, nothing else:\n{names}\n\n"
+                f"Knowledge: {text}"
+            )
+            result = await self._call_with_fallback(prompt, task)
+            candidate = result.strip()
+            if candidate in ROOT_CODES:
+                return candidate
+            # Модель могла вернуть с лишним текстом — ищем точное совпадение внутри ответа
+            for name in ROOT_CODES.keys():
+                if name in candidate:
+                    return name
+            log.warning(
+                f"[ai_router] classify(macro_root) вернул нераспознанное "
+                f"'{candidate[:80]}' — используется дефолт 'Философия/Логика'"
+            )
+            return "Философия/Логика"
+
         prompts = {
-            "macro_root": f"From the 32 EVO knowledge roots (Φ,Λ,M,γ,ζ,β,η,κ,ε,τ,σ,α,χ,ψ,δ,ξ,Ω,Π,Θ,Ξ,Ψ,Σ,Δ,Γ,μ,ν,ρ,ι,θ,π,ω,λ), which ONE best fits this knowledge? Return ONLY the symbol: {text}",
             "type_ab": f"Is this knowledge update (A) improvement of same approach or (B) different tools/conditions? Return ONLY 'A' or 'B': {text}",
         }
         return await self._call_with_fallback(prompts.get(task, text), task)
