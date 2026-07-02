@@ -105,10 +105,64 @@ def test_no_latin_homoglyphs():
     assert not bad, f"Найдены непреднамеренные омографы латиницы в ROOT_CODES: {bad}"
     print("✅ Нет визуальных омографов латиницы в ROOT_CODES")
 
+
+
+def test_classify_prompt_uses_canonical_names():
+    """
+    Регрессионный тест на баг: ai_router.classify(task="macro_root") раньше
+    просил модель вернуть ГОЛЫЙ символ (τ), а весь пайплайн (ROOT_CODES,
+    _get_root_code, WHERE science=$1) работает с ПОЛНЫМИ именами как ключами.
+    Из-за расхождения каждый новый символ проваливался в fallback Φ.
+    Проверяем СТРУКТУРНО, без вызова реального API: промпт должен перечислять
+    полные канонические имена из ROOT_CODES, не голые символы.
+    """
+    from core.archivist import ROOT_CODES
+    import core.ai_router as ar_module
+    import inspect
+
+    src = inspect.getsource(ar_module.AIRouter.classify) if hasattr(ar_module, 'AIRouter') else \
+          inspect.getsource(ar_module.ai_router.classify)
+
+    # Промпт должен строиться из ROOT_CODES.keys(), не из хардкод-списка символов
+    assert "ROOT_CODES" in src, (
+        "classify() должен строить список корней динамически из ROOT_CODES, "
+        "а не хардкодить символы — иначе список снова разойдётся с реальным словарём"
+    )
+    # Не должно быть старого хардкод-паттерна голых символов через запятую
+    assert "Φ,Λ,M,γ,ζ" not in src, (
+        "Обнаружен старый хардкод списка символов в промпте classify() — "
+        "регрессия к багу несовпадения имя/символ"
+    )
+    print("✅ ai_router.classify(macro_root) использует ROOT_CODES как источник истины")
+
+
+def test_new_symbol_root_not_truncated():
+    """
+    Регрессионный тест: core/archivist.py::_new_symbol раньше делал
+    root.strip()[:2] — обрезку результата классификации до 2 символов,
+    что превращало полные имена в мусор и роняло поиск в ROOT_CODES.
+    Проверяем что обрезка убрана из исходного кода функции.
+    """
+    import inspect
+    from core.archivist import _new_symbol
+    src = inspect.getsource(_new_symbol)
+    assert "[:2]" not in src, (
+        "_new_symbol снова обрезает root до 2 символов — "
+        "это ломает поиск полного имени в ROOT_CODES"
+    )
+    assert "_get_root_code" in src, (
+        "_new_symbol должен явно вызывать _get_root_code для построения "
+        "короткого символа в пути шарда, не использовать root напрямую"
+    )
+    print("✅ _new_symbol не обрезает root, использует _get_root_code для короткого символа")
+
+
 if __name__ == "__main__":
     test_hyperlinks()
     test_zstd_roundtrip()
     test_symbol_id_format()
     test_root_code_generator_matches_spec()
     test_no_latin_homoglyphs()
+    test_classify_prompt_uses_canonical_names()
+    test_new_symbol_root_not_truncated()
     print("\n✅ All notation tests passed")
