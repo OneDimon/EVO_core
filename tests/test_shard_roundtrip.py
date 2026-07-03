@@ -104,6 +104,112 @@ async def run_tests():
     print('='*40)
     return len(errors) == 0
 
+
+
+async def run_dictionary_tests():
+    print("\n=== Dictionary compression tests ===\n")
+    errors = []
+
+    from shards.shard_client import (
+        write_cell, read_cell_local, train_dictionary_for_root,
+        _get_dictionary, _local_list_cells
+    )
+
+    # T7: пишем 25 маленьких похожих ячеек в тестовый раздел "τ" (реальный
+    # символ канона — используем существующую папку, не выдуманную "TEST")
+    try:
+        root = "τ"
+        base_text = (
+            "Инструкция: настроить cookie manager в ZennoPoster для профиля {n}. "
+            "Проверить авторизацию через HSR endpoint, timeout 30s, "
+            "retry 3 раза с backoff. [[EVO:τ^{{x}}_{{y_{n:04d}}} | тест]]"
+        )
+        for i in range(25):
+            await write_cell(host="", path=f"/evo/{root}/dicttest_{i:04d}.zst",
+                              content=base_text.format(n=i), symbol_id="")
+        print(f"✅ [T7] Записано 25 тестовых ячеек в раздел '{root}'")
+    except Exception as e:
+        errors.append("T7")
+        print(f"❌ [T7] Exception: {e}")
+
+    # T8: обучаем словарь на этом разделе (min_samples=20, у нас 25 — должно пройти)
+    try:
+        ok = await train_dictionary_for_root("τ", min_samples=20)
+        print(f"{'✅' if ok else '❌'} [T8] train_dictionary_for_root('τ') → {ok}")
+        if not ok: errors.append("T8")
+    except Exception as e:
+        errors.append("T8")
+        print(f"❌ [T8] Exception: {e}")
+
+    # T9: после обучения словарь загружается из кэша/хранилища
+    try:
+        zdict = await _get_dictionary("τ")
+        ok = zdict is not None and len(zdict) > 0
+        print(f"{'✅' if ok else '❌'} [T9] Словарь раздела 'τ' доступен: "
+              f"{len(zdict) if zdict else 0} байт")
+        if not ok: errors.append("T9")
+    except Exception as e:
+        errors.append("T9")
+        print(f"❌ [T9] Exception: {e}")
+
+    # T10: НОВАЯ ячейка, записанная ПОСЛЕ обучения словаря, читается корректно
+    # (round-trip со словарём — это и есть основная цель фичи)
+    try:
+        new_content = ("Инструкция: настроить cookie manager в ZennoPoster для профиля 99. "
+                        "Проверить авторизацию через HSR endpoint новый вариант.")
+        path = "/evo/τ/dicttest_post_dict_0001.zst"
+        await write_cell(host="", path=path, content=new_content, symbol_id="")
+        restored, _ = await read_cell_local(path)
+        ok = restored == new_content
+        print(f"{'✅' if ok else '❌'} [T10] Round-trip СО словарём после обучения byte-exact")
+        if not ok:
+            errors.append("T10")
+            print(f"    ожидалось: {new_content!r}")
+            print(f"    получено:  {restored!r}")
+    except Exception as e:
+        errors.append("T10")
+        print(f"❌ [T10] Exception: {e}")
+
+    # T11: СТАРАЯ ячейка (записана ДО обучения словаря, из T7) всё ещё читается —
+    # это проверка graceful fallback на legacy-формат без словаря
+    try:
+        legacy_path = "/evo/τ/dicttest_0000.zst"
+        restored, _ = await read_cell_local(legacy_path)
+        ok = "Инструкция: настроить cookie manager" in restored
+        print(f"{'✅' if ok else '❌'} [T11] Legacy-ячейка (без словаря) читается через fallback")
+        if not ok: errors.append("T11")
+    except Exception as e:
+        errors.append("T11")
+        print(f"❌ [T11] Exception: {e}")
+
+    # T12: реальная выгода — сжатие СО словарём эффективнее для маленьких ячеек,
+    # чем без него (сравниваем размер на диске одинакового текста)
+    try:
+        import os as _os
+        from shards.zstd_codec import compress
+        small_text = "Короткий паттерн: rate limiting через Redis incr/expire."
+        no_dict_size = len(compress(small_text))
+        zdict = await _get_dictionary("τ")
+        with_dict_size = len(compress(small_text, dict_data=zdict)) if zdict else no_dict_size
+        improved = with_dict_size <= no_dict_size
+        print(f"{'✅' if improved else '⚠️ '} [T12] Сжатие маленькой ячейки: "
+              f"без словаря={no_dict_size}b, со словарём={with_dict_size}b")
+        if not improved: errors.append("T12")
+    except Exception as e:
+        errors.append("T12")
+        print(f"❌ [T12] Exception: {e}")
+
+    total = 6
+    passed = total - len(errors)
+    print(f"\n{'='*40}")
+    print(f"Dictionary compression: {passed}/{total} passed")
+    if errors:
+        print(f"Failed: {errors}")
+    print('='*40)
+    return len(errors) == 0
+
+
 if __name__ == "__main__":
-    ok = asyncio.run(run_tests())
-    sys.exit(0 if ok else 1)
+    ok1 = asyncio.run(run_tests())
+    ok2 = asyncio.run(run_dictionary_tests())
+    sys.exit(0 if (ok1 and ok2) else 1)
