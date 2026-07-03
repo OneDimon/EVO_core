@@ -72,12 +72,14 @@ async def _provider() -> str:
 
 
 async def read_cell(host: str, path: str, mirror: str = None) -> tuple[str, list]:
+    root = _extract_root(path)
+    zdict = await _get_dictionary(root)
     prov = await _provider()
     for h in filter(None, [host, mirror, "local"]):
         try:
             raw = await _read(prov, path)
             if raw:
-                content = decompress(raw)
+                content = _decompress_with_fallback(raw, zdict)
                 return content, parse_hyperlinks(content)
         except Exception as e:
             log.warning(f"read fail {h}{path}: {e}")
@@ -87,17 +89,38 @@ async def read_cell(host: str, path: str, mirror: str = None) -> tuple[str, list
 async def read_cell_local(path: str) -> tuple[str, list]:
     try:
         raw = _local_read(path)
-        content = decompress(raw)
+        root = _extract_root(path)
+        zdict = await _get_dictionary(root)
+        content = _decompress_with_fallback(raw, zdict)
         return content, parse_hyperlinks(content)
     except FileNotFoundError:
         return "", []
 
 
+def _decompress_with_fallback(raw: bytes, zdict: bytes) -> str:
+    """
+    Пытается разжать со словарём раздела; если ячейка была записана ДО
+    обучения словаря (legacy, без словаря) — zstd вернёт ошибку декомпрессии
+    (несовпадение словаря даёт явное исключение, не тихий мусор) — тогда
+    пробуем разжать без словаря. Это делает включение словарей нележащим
+    на существующие данные: старые ячейки продолжают читаться как раньше.
+    """
+    if zdict:
+        try:
+            return decompress(raw, dict_data=zdict)
+        except Exception:
+            pass  # legacy-ячейка без словаря — пробуем ниже
+    return decompress(raw)
+
+
 async def write_cell(host: str, path: str, content: str, symbol_id: str = "") -> str:
-    """Запись + автопришивка shard_link к символу в pgvector."""
+    """Запись + автопришивка shard_link к символу в pgvector.
+    Использует обученный словарь раздела если он уже есть (см. _get_dictionary)."""
     path = _validate_path(path)
     prov = await _provider()
-    data = compress(content)
+    root = _extract_root(path)
+    zdict = await _get_dictionary(root)
+    data = compress(content, dict_data=zdict)
     try:
         final_path = await _write(prov, path, data)
     except Exception as e:
