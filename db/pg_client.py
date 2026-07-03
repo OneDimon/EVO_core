@@ -4,12 +4,35 @@ from typing import Optional
 
 _pool = None
 
+async def _init_connection(conn):
+    """
+    Выполняется на каждом новом соединении пула.
+    hnsw.ef_search — качество поиска (recall) HNSW-индекса на чтение,
+    выше = точнее но медленнее. 100 — разумный баланс для десятков
+    миллионов записей (см. migration 006_hnsw_index.sql).
+    Настраивается через env HNSW_EF_SEARCH без правки кода.
+    """
+    ef_search = os.getenv("HNSW_EF_SEARCH", "100")
+    await conn.execute(f"SET hnsw.ef_search = {int(ef_search)}")
+
+
 async def get_pool():
+    """
+    Пул соединений. Размер — под нагрузку тысяч пользователей:
+    каждый воркер uvicorn (см. docker-compose.yml UVICORN_WORKERS) держит
+    свой независимый пул. Postgres max_connections должен вмещать
+    workers × max_size с запасом (см. docker-compose.yml command postgres).
+    Раньше было min_size=2, max_size=10 — рассчитано на разработку,
+    не на продакшн с параллельными запросами от тысяч клиентов.
+    """
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
             os.getenv("DATABASE_URL", "postgresql://evo_user:evo_secret@localhost:5432/evo_core"),
-            min_size=2, max_size=10
+            min_size=int(os.getenv("PG_POOL_MIN", "5")),
+            max_size=int(os.getenv("PG_POOL_MAX", "25")),
+            max_inactive_connection_lifetime=300,
+            init=_init_connection,
         )
     return _pool
 
