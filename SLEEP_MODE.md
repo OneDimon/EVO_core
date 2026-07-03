@@ -72,6 +72,17 @@ async def calculate_sleep_window(days: int = 7) -> tuple[int, int]:
    - Оценка по рейтингу и актуальности
    - Запись через archivist._new_symbol() — тот же путь что gap_filled
    - Реализация: core/knowledge_collector.py
+
+6. ПЕРЕОБУЧЕНИЕ СЛОВАРЕЙ СЖАТИЯ
+   - Для каждого из 32 макро-корней: если корпус ячеек вырос на 20%+
+     с последнего обучения (или словарь ещё не обучен) — переобучить
+   - zstd dictionary compression: общий словарь раздела даёт маленьким
+     ячейкам степень сжатия, сравнимую с сжатием целого корпуса, сохраняя
+     независимый точечный доступ к каждой ячейке
+   - Состояние обучения — evo_config[DICT_TRAINING_STATE] (JSON по разделам)
+   - Поддерживается только SHARD_PROVIDER=local (листинг файлов раздела)
+   - Реализация: shards/shard_client.py::train_dictionary_for_root(),
+     core/sleep_mode.py::_retrain_dictionaries()
 ```
 
 ---
