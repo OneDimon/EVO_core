@@ -1,9 +1,8 @@
-import hashlib
 """
 Архивариус — запись и обновление символов.
 Работает асинхронно через очередь — пользователь не ждёт.
 """
-import asyncio, logging, re
+import asyncio, logging, re, hashlib
 from datetime import datetime
 from db.pg_client import find_symbols, insert_symbol, update_symbol_type_a, increment_rating
 from db.redis_client import enqueue_write
