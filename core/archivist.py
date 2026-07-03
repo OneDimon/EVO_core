@@ -1,3 +1,4 @@
+import hashlib
 """
 Архивариус — запись и обновление символов.
 Работает асинхронно через очередь — пользователь не ждёт.
@@ -34,24 +35,50 @@ async def archive(session_id: str, output: str, solution_quality: str,
 async def _process_archive(output: str, solution_quality: str,
                             deviations: str, applied_stack: list[str],
                             original_tz: str, context: dict):
-    """Полный цикл архивации — Контур Obsidian."""
+    """
+    Полный цикл архивации — Контур Obsidian.
+
+    Защита от гонки при конкурентной записи: при тысячах пользователей два
+    флагмана могут одновременно решать очень похожие задачи. Оба пройдут
+    similarity check ДО того, как второй увидит запись первого (классическая
+    check-then-act гонка) — оба создадут почти-дубль вместо того чтобы один
+    стал Тип А/Б другого. PostgreSQL advisory lock, ключ — грубый бакет по
+    первым 16 измерениям вектора (округление до 1 знака), сериализует ТОЛЬКО
+    семантически близкие записи — не блокирует несвязанные записи других
+    пользователей (не глобальный лок, не убивает пропускную способность).
+    Работает между всеми воркерами/процессами (лок на уровне БД, не Python).
+    """
+    from db.pg_client import get_pool
     try:
         # 1. Векторизовать новое знание
         vector = await ai_router.embed(output[:500] + " " + original_tz[:200])
 
-        # 2. Similarity check
-        similar = await find_symbols(vector, top_k=3, exclude_legacy=False)
-        top_sim = similar[0].get('similarity', 0) if similar else 0
+        # 2. Advisory lock на грубый бакет вектора — сериализует конкурентные
+        # записи одной семантической области, не трогая остальные
+        bucket_raw = ",".join(f"{v:.1f}" for v in vector[:16])
+        lock_id = int(hashlib.md5(bucket_raw.encode()).hexdigest()[:15], 16) % (2**62)
 
-        if top_sim > 0.95:
-            await _type_a(similar[0], output, applied_stack, vector)
-        elif top_sim > 0.75:
-            # P3 fix: new_stack = текущий applied_stack (новое применение)
-            #         applied_stack = стек родительского символа
-            parent_stacks = similar[0].get('applicable_stacks', [])
-            await _type_b(similar[0], output, applied_stack, parent_stacks, vector, original_tz)
-        else:
-            await _new_symbol(output, applied_stack, vector, original_tz)
+        pool = await get_pool()
+        async with pool.acquire() as lock_conn:
+            await lock_conn.execute("SELECT pg_advisory_lock($1)", lock_id)
+            try:
+                # 3. Similarity check — теперь под локом, второй конкурентный
+                # вызов с похожим вектором дождётся завершения первого и
+                # увидит уже вставленный символ как кандидата на Тип А/Б
+                similar = await find_symbols(vector, top_k=3, exclude_legacy=False)
+                top_sim = similar[0].get('similarity', 0) if similar else 0
+
+                if top_sim > 0.95:
+                    await _type_a(similar[0], output, applied_stack, vector)
+                elif top_sim > 0.75:
+                    # P3 fix: new_stack = текущий applied_stack (новое применение)
+                    #         applied_stack = стек родительского символа
+                    parent_stacks = similar[0].get('applicable_stacks', [])
+                    await _type_b(similar[0], output, applied_stack, parent_stacks, vector, original_tz)
+                else:
+                    await _new_symbol(output, applied_stack, vector, original_tz)
+            finally:
+                await lock_conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
     except Exception as e:
         log.error(f"Archive failed: {e}")
