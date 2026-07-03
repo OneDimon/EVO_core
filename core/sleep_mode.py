@@ -113,6 +113,7 @@ async def _sleep_cycle():
         ("Апдейт графа знаний", _update_graph),
         ("Статистика", _generate_stats),
         ("Автонаполнение ядра (Канал 1)", _auto_fill_knowledge),
+        ("Переобучение словарей сжатия", _retrain_dictionaries),
     ]
 
     for name, fn in tasks:
@@ -296,6 +297,61 @@ async def _auto_fill_knowledge():
         await collect_and_fill()
     except Exception as e:
         log.error(f"[Sleep] Автонаполнение ошибка: {e}")
+
+
+async def _retrain_dictionaries():
+    """
+    Задача 6 цикла СОН — переобучение словарей сжатия по разделам.
+    Проверяет каждый из 32 макро-корней: если корпус ячеек вырос на 20%+
+    с последнего обучения (или словарь ещё не обучен) — переобучает.
+    Состояние (последний обученный размер корпуса) хранится в evo_config
+    как JSON под ключом DICT_TRAINING_STATE — переиспользует существующий
+    механизм конфигов, не требует новой таблицы в БД.
+    """
+    import json as _json
+    from core.archivist import ROOT_CODES
+    from core.config_manager import get as cfg_get, set as cfg_set
+    from shards.shard_client import train_dictionary_for_root, _local_list_cells, _provider
+
+    if await _provider() != "local":
+        log.info("[Sleep] Переобучение словарей пропущено — "
+                  "поддерживается только SHARD_PROVIDER=local")
+        return
+
+    raw_state = await cfg_get("DICT_TRAINING_STATE", "{}")
+    try:
+        state = _json.loads(raw_state)
+    except Exception:
+        state = {}
+
+    retrained = 0
+    for science, symbol in ROOT_CODES.items():
+        if not _sleep_active:
+            break
+        current_count = len(_local_list_cells(symbol))
+        last_count = state.get(symbol, {}).get("last_count", 0)
+
+        if current_count == 0:
+            continue
+        needs_retrain = (
+            symbol not in state or
+            current_count >= last_count * 1.2
+        )
+        if not needs_retrain:
+            continue
+
+        ok = await train_dictionary_for_root(symbol)
+        if ok:
+            state[symbol] = {"last_count": current_count, "science": science}
+            retrained += 1
+
+    if retrained:
+        await cfg_set("DICT_TRAINING_STATE", _json.dumps(state, ensure_ascii=False),
+                       description="Состояние обучения словарей сжатия по разделам",
+                       category="shards")
+        log.info(f"[Sleep] Переобучено словарей: {retrained}")
+    else:
+        log.info("[Sleep] Переобучение словарей: нечего обновлять")
 
 
 async def apply_architect_choice(notif_id: int, choice: int):
