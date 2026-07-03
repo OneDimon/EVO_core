@@ -1,13 +1,22 @@
 """
-Shard Client — БЛОК 03, Фаза 1
+Shard Client — БЛОК 03, Фаза 1 + словарное сжатие (Фаза 4)
 Провайдеры: local | gdrive | github | r2
 Конфиг: Admin UI → config_manager → везде автоматически.
 Автопришивка shard_link к символу после записи.
+
+Словарное сжатие: каждая ячейка сжимается независимо (точечный доступ
+сохраняется), но с общим обученным словарём раздела — маленькие ячейки
+получают степень сжатия, сравнимую со сжатием всего корпуса, без потери
+возможности разжать ровно одну ячейку. Обучение — core/sleep_mode.py
+задача 6 (_retrain_dictionaries), см. train_dictionary_for_root() ниже.
 """
 import logging
-from shards.zstd_codec import compress, decompress, parse_hyperlinks
+from shards.zstd_codec import compress, decompress, parse_hyperlinks, train_dictionary
 
 log = logging.getLogger("evo.shards")
+
+# In-memory кэш словарей по корню (символ → байты словаря или None если не обучен)
+_dict_cache: dict = {}
 
 
 def _validate_path(path: str) -> str:
@@ -24,6 +33,36 @@ def _validate_path(path: str) -> str:
     if not re.match(r"^[/a-zA-Z0-9_.^{}\-]+$", normalized):
         raise ValueError(f"Недопустимые символы в пути: {path}")
     return normalized
+
+
+def _extract_root(path: str) -> str:
+    """Извлекает символ макро-корня из пути вида /evo/{root}/файл.zst"""
+    parts = path.strip("/").split("/")
+    return parts[1] if len(parts) >= 2 else ""
+
+
+def _dict_path(root: str) -> str:
+    """Путь к обученному словарю раздела (не ячейка — сырой бинарный блоб)."""
+    return f"/evo/_dictionaries/{root}.zdict"
+
+
+async def _get_dictionary(root: str) -> bytes | None:
+    """
+    Загружает словарь раздела с кэшированием в памяти процесса.
+    None (в т.ч. кэшированный) означает "словарь ещё не обучен" — не ошибка,
+    просто такие ячейки сжимаются без словаря (как раньше).
+    """
+    if not root or root == "_dictionaries":
+        return None
+    if root in _dict_cache:
+        return _dict_cache[root]
+    prov = await _provider()
+    try:
+        raw = await _read(prov, _dict_path(root))
+        _dict_cache[root] = raw if raw else None
+    except Exception:
+        _dict_cache[root] = None
+    return _dict_cache[root]
 
 
 
