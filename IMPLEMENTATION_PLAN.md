@@ -566,6 +566,7 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 - [x] Личный кабинет — `site/dashboard.html`, вход по API-ключу, статистика через `/api/v1/me`
 - [x] Admin-панель расширена — `admin_ui.html`: LibraryStatsCard, TopSymbolsCard, UsersStatsCard через `/api/v1/admin/stats`
 - [x] Backend кабинетов — `api/routes/me.py`, `api/routes/admin.py::get_core_stats`
+- [x] Словарное сжатие ячеек шардов (`shards/zstd_codec.py::train_dictionary`, `shards/shard_client.py::train_dictionary_for_root`) — устраняет корневую рассинхронизацию science/символ (три связанных бага в `archivist.py`, `ai_router.classify`), СОН задача 6 переобучает словари автоматически
 - [x] nginx конфиг + docker-compose site-сервис (`site/nginx.conf`, `docker-compose.yml`)
 - [x] MCP Registry манифест (`site/mcp-manifest.json`)
 - [x] Аудиты P1-P16 и N1-N15 закрыты — код готов к деплою
