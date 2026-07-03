@@ -160,6 +160,77 @@ async def _attach_link(symbol_id: str, shard_path: str, host: str):
     log.debug(f"shard_link → {symbol_id}: {shard_path}")
 
 
+# ── Обучение словаря раздела ───────────────────────────────────────────────────
+
+def _local_list_cells(root: str) -> list:
+    """
+    Перечисляет ячейки раздела в локальном хранилище (для обучения словаря).
+    Работает только для SHARD_PROVIDER=local — для остальных провайдеров
+    (gdrive/github/r2) листинг не реализован, обучение будет пропущено
+    с явным логом (см. train_dictionary_for_root), не тихой ошибкой.
+    """
+    import os
+    folder = f"/tmp/evo_shards/evo/{root}"
+    if not os.path.isdir(folder):
+        return []
+    return [
+        f"/evo/{root}/{name}" for name in os.listdir(folder)
+        if name.endswith(".zst") and not name.endswith("_legacy.zst")
+    ]
+
+
+async def train_dictionary_for_root(root: str, min_samples: int = 20) -> bool:
+    """
+    Обучает и сохраняет словарь сжатия для одного макро-корня.
+    Вызывается из core/sleep_mode.py задача 6 (_retrain_dictionaries) —
+    периодически, когда корпус раздела заметно вырос.
+
+    Возвращает True если словарь обучен и сохранён, False если пропущено
+    (недостаточно образцов или провайдер не поддерживает листинг).
+    """
+    prov = await _provider()
+    if prov != "local":
+        log.info(f"[Shards] Обучение словаря для '{root}' пропущено — "
+                  f"листинг не реализован для провайдера '{prov}' "
+                  f"(поддерживается только 'local')")
+        return False
+
+    paths = _local_list_cells(root)
+    if len(paths) < min_samples:
+        log.info(f"[Shards] Раздел '{root}': {len(paths)} ячеек < {min_samples} "
+                  f"минимума для обучения словаря — пропущено")
+        return False
+
+    # Разжимаем существующие ячейки БЕЗ словаря (они ещё не могли быть
+    # сжаты со словарём, которого пока нет) — получаем сырые байты как образцы
+    samples = []
+    for path in paths:
+        try:
+            raw = _local_read(path)
+            content = decompress(raw)  # legacy-формат, без словаря
+            samples.append(content.encode('utf-8'))
+        except Exception as e:
+            log.warning(f"[Shards] Пропущена ячейка {path} при обучении словаря: {e}")
+
+    if len(samples) < min_samples:
+        log.info(f"[Shards] Раздел '{root}': после фильтрации {len(samples)} "
+                  f"валидных образцов < {min_samples} — пропущено")
+        return False
+
+    try:
+        dict_bytes = train_dictionary(samples)
+    except Exception as e:
+        log.error(f"[Shards] Обучение словаря для '{root}' не удалось: {e}")
+        return False
+
+    dict_path = _dict_path(root)
+    _local_write(dict_path, dict_bytes)
+    _dict_cache[root] = dict_bytes  # обновляем кэш немедленно
+    log.info(f"[Shards] Словарь раздела '{root}' обучен: "
+              f"{len(samples)} образцов → {len(dict_bytes)}b словарь")
+    return True
+
+
 # ── Провайдеры ─────────────────────────────────────────────────────────────────
 
 def _local_read(path: str) -> bytes:
