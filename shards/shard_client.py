@@ -11,6 +11,7 @@ Shard Client — БЛОК 03, Фаза 1 + словарное сжатие (Фа
 задача 6 (_retrain_dictionaries), см. train_dictionary_for_root() ниже.
 """
 import logging
+import asyncio
 from shards.zstd_codec import compress, decompress, parse_hyperlinks, train_dictionary
 
 log = logging.getLogger("evo.shards")
@@ -79,7 +80,7 @@ async def read_cell(host: str, path: str, mirror: str = None) -> tuple[str, list
         try:
             raw = await _read(prov, path)
             if raw:
-                content = _decompress_with_fallback(raw, zdict)
+                content = await _decompress_with_fallback(raw, zdict)
                 return content, parse_hyperlinks(content)
         except Exception as e:
             log.warning(f"read fail {h}{path}: {e}")
@@ -91,26 +92,32 @@ async def read_cell_local(path: str) -> tuple[str, list]:
         raw = _local_read(path)
         root = _extract_root(path)
         zdict = await _get_dictionary(root)
-        content = _decompress_with_fallback(raw, zdict)
+        content = await _decompress_with_fallback(raw, zdict)
         return content, parse_hyperlinks(content)
     except FileNotFoundError:
         return "", []
 
 
-def _decompress_with_fallback(raw: bytes, zdict: bytes) -> str:
+async def _decompress_with_fallback(raw: bytes, zdict: bytes) -> str:
     """
     Пытается разжать со словарём раздела; если ячейка была записана ДО
     обучения словаря (legacy, без словаря) — zstd вернёт ошибку декомпрессии
     (несовпадение словаря даёт явное исключение, не тихий мусор) — тогда
     пробуем разжать без словаря. Это делает включение словарей нележащим
     на существующие данные: старые ячейки продолжают читаться как раньше.
+
+    Обёрнуто в asyncio.to_thread: zstd compress/decompress — синхронный
+    CPU-bound вызов. Под нагрузкой тысяч пользователей прямой вызов в async
+    функции блокирует ВЕСЬ событийный цикл воркера на время операции —
+    все остальные параллельные запросы этого воркера встают в очередь.
+    to_thread выносит блокирующий вызов в пул потоков, event loop свободен.
     """
     if zdict:
         try:
-            return decompress(raw, dict_data=zdict)
+            return await asyncio.to_thread(decompress, raw, zdict)
         except Exception:
             pass  # legacy-ячейка без словаря — пробуем ниже
-    return decompress(raw)
+    return await asyncio.to_thread(decompress, raw)
 
 
 async def write_cell(host: str, path: str, content: str, symbol_id: str = "") -> str:
@@ -120,7 +127,7 @@ async def write_cell(host: str, path: str, content: str, symbol_id: str = "") ->
     prov = await _provider()
     root = _extract_root(path)
     zdict = await _get_dictionary(root)
-    data = compress(content, dict_data=zdict)
+    data = await asyncio.to_thread(compress, content, zdict)  # CPU-bound → поток
     try:
         final_path = await _write(prov, path, data)
     except Exception as e:
@@ -137,7 +144,7 @@ async def write_cell(host: str, path: str, content: str, symbol_id: str = "") ->
 async def write_legacy_cell(path: str, content: str) -> str:
     """Сохраняет legacy тело при Тип А (старое рядом с новым)."""
     legacy_path = path.replace(".zst", "_legacy.zst")
-    data = compress(content)
+    data = await asyncio.to_thread(compress, content)  # CPU-bound → поток
     prov = await _provider()
     try:
         return await _write(prov, legacy_path, data)
@@ -207,7 +214,7 @@ async def train_dictionary_for_root(root: str, min_samples: int = 20) -> bool:
     for path in paths:
         try:
             raw = _local_read(path)
-            content = decompress(raw)  # legacy-формат, без словаря
+            content = await asyncio.to_thread(decompress, raw)  # legacy, CPU-bound
             samples.append(content.encode('utf-8'))
         except Exception as e:
             log.warning(f"[Shards] Пропущена ячейка {path} при обучении словаря: {e}")
@@ -218,7 +225,9 @@ async def train_dictionary_for_root(root: str, min_samples: int = 20) -> bool:
         return False
 
     try:
-        dict_bytes = train_dictionary(samples)
+        # train_dictionary — самая тяжёлая CPU-bound операция всей цепочки
+        # (перебор корпуса образцов) — обязательно в потоке
+        dict_bytes = await asyncio.to_thread(train_dictionary, samples)
     except Exception as e:
         log.error(f"[Shards] Обучение словаря для '{root}' не удалось: {e}")
         return False
