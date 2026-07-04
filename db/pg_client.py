@@ -92,9 +92,10 @@ async def insert_symbol(s: dict) -> bool:
              legacy_symbols,applicable_stacks,hyperlinks,is_legacy,superseded_by,
              supersedes,hypothesis,
              source_url,source_rating,source_type,auto_collected,
+             is_universal,context_conditions,is_fundamental,last_tech_check,
              version_ts)
             VALUES($1,$2,$3::vector,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-                   $21,$22,$23,$24,NOW())
+                   $21,$22,$23,$24,$25,$26,$27,NOW(),NOW())
             ON CONFLICT (id) DO NOTHING
         """, s['id'], s['label'], vec_str, s['science'], s['section'], s['subsection'],
             s.get('confirmed_by',1), s.get('confirmed_in',[]),
@@ -104,7 +105,12 @@ async def insert_symbol(s: dict) -> bool:
             s.get('hyperlinks',[]), s.get('is_legacy',False),
             s.get('superseded_by'), s.get('supersedes'), s.get('hypothesis',False),
             s.get('source_url'), s.get('source_rating',0),
-            s.get('source_type'), s.get('auto_collected',False)
+            s.get('source_type'), s.get('auto_collected',False),
+            # По умолчанию is_universal=True — ядро хранит истинные для всех
+            # решения; частные случаи агент/архивариус явно помечает False
+            # с заполненным context_conditions (см. archivist.py)
+            s.get('is_universal', True), s.get('context_conditions'),
+            s.get('is_fundamental', False)
         )
     return True
 
