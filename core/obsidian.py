@@ -168,7 +168,7 @@ async def _check_ligature_candidates(cartridge: dict):
                     "id": ligature_id,
                     "label": f"лигатура: {cand['label'][:60]} | области: {roots_str}",
                     "vector": list(cand['vector']) if cand['vector'] else [],
-                    "science": "+".join(roots[:3]),
+                    "science": "⊕".join(roots[:3]),  # fix: единый разделитель с ligature_id
                     "section": cand['section'],
                     "subsection": cand['subsection'],
                     "confirmed_by": 3,
