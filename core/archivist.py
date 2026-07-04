@@ -64,7 +64,11 @@ async def _process_archive(output: str, solution_quality: str,
                 # 3. Similarity check — теперь под локом, второй конкурентный
                 # вызов с похожим вектором дождётся завершения первого и
                 # увидит уже вставленный символ как кандидата на Тип А/Б
-                similar = await find_symbols(vector, top_k=3, exclude_legacy=False)
+                # include_conditional=True — сверка идёт по ВСЕЙ базе (включая
+                # частные решения), иначе рискуем задублировать уже существующее
+                # условное решение как "новое универсальное"
+                similar = await find_symbols(vector, top_k=3, exclude_legacy=False,
+                                              include_conditional=True)
                 top_sim = similar[0].get('similarity', 0) if similar else 0
 
                 if top_sim > 0.95:
