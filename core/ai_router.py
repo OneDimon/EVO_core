@@ -144,6 +144,39 @@ class AIRouter:
             )
             return "Философия/Логика"
 
+        if task == "personal_context":
+            # Определяет: описывает ли текст УНИВЕРСАЛЬНЫЙ технический факт
+            # (годится для всех пользователей) или ЧАСТНЫЙ случай (личное
+            # предпочтение конкретного пользователя/агента: стиль, вкус,
+            # разовое нетиповое ограничение).
+            #
+            # БЕЗОПАСНЫЙ ДЕФОЛТ: при любой неуверенности/сбое классификатора
+            # результат — "personal" (условное решение), НЕ "universal".
+            # Обоснование: ложно-универсальное решение УТЕКАЕТ в чужие
+            # картриджи (риск приватности/качества для всех пользователей).
+            # Ложно-условное решение просто не попадёт в общую выдачу —
+            # безопасный отказ, не вред. Асимметрия рисков требует
+            # асимметричного дефолта.
+            prompt = (
+                "Does this text describe a UNIVERSAL technical fact/solution "
+                "applicable to any user (e.g. 'rate limit via Redis incr'), or "
+                "a PERSONAL/individual preference specific to one user's context "
+                "(e.g. 'user prefers dark theme', 'this user's legacy API version', "
+                "'client wants blue buttons')? "
+                "Return ONLY one word: 'universal' or 'personal'.\n\n"
+                f"Text: {text[:600]}"
+            )
+            try:
+                result = await self._call_with_fallback(prompt, task)
+                answer = result.strip().lower()
+                if "universal" in answer and "personal" not in answer:
+                    return "universal"
+                return "personal"  # включая любой неоднозначный/пустой ответ
+            except Exception as e:
+                log.warning(f"[ai_router] classify(personal_context) сбой: {e} "
+                            f"— безопасный дефолт 'personal'")
+                return "personal"
+
         prompts = {
             "type_ab": f"Is this knowledge update (A) improvement of same approach or (B) different tools/conditions? Return ONLY 'A' or 'B': {text}",
         }
