@@ -107,7 +107,13 @@ async def _sleep_cycle():
     log.info("[Sleep] Запуск фонового цикла")
     asyncio.create_task(sleep_watchdog())
 
+    # Порядок задач важен (требование Архитектора): СНАЧАЛА актуализация
+    # и очистка устаревшего, ЗАТЕМ поиск и наполнение новым. Иначе Канал 1
+    # может искать замену тому, что через секунду будет вычищено, или
+    # наоборот — не заметить свежепрочищенный пробел в этом же цикле.
     tasks = [
+        ("Очистка устаревших знаний", _prune_outdated_knowledge),
+        ("Проверка ёмкости шардов", _check_shard_capacity),
         ("Поиск потенциальных лигатур", _find_ligature_candidates),
         ("Проверка гипотез", _check_hypotheses),
         ("Апдейт графа знаний", _update_graph),
@@ -146,6 +152,99 @@ async def _sleep_cycle():
             log.error(f"[Sleep] Ошибка в '{name}': {e}")
 
     log.info("[Sleep] Фоновый цикл завершён")
+
+
+async def _prune_outdated_knowledge():
+    """
+    Задача 0 цикла СОН (выполняется ПЕРВОЙ) — очистка устаревших знаний.
+
+    Правило Архитектора: символы с низким рейтингом и давно не применявшиеся
+    архивируются (is_legacy=TRUE, история НЕ теряется — только помечается
+    неактуальной, YMS-MMM §17 хронология неприкосновенна). ИСКЛЮЧЕНИЕ:
+    is_fundamental=TRUE символы НИКОГДА не архивируются этой задачей —
+    даже при низком рейтинге, если для этой области ещё не нашлось решения
+    лучше. Это защищает фундаментальные знания (не зависящие от смены
+    технологий) от случайной потери при чистке по формальным метрикам.
+
+    Порог: rating_frequency < 2 И last_updated старше 180 дней.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        candidates = await conn.fetch("""
+            SELECT id, science, rating_frequency, last_updated
+            FROM scl_symbols
+            WHERE is_fundamental = FALSE
+              AND is_legacy = FALSE
+              AND rating_frequency < 2
+              AND last_updated < NOW() - INTERVAL '180 days'
+            LIMIT 50
+        """)
+        pruned = 0
+        for c in candidates:
+            await conn.execute("""
+                UPDATE scl_symbols
+                SET is_legacy = TRUE,
+                    evolution_note = COALESCE(evolution_note, '') ||
+                        ' [автоочистка: устарело, R_f<2, >180 дней без применения]',
+                    last_updated = NOW()
+                WHERE id = $1
+            """, c['id'])
+            pruned += 1
+
+    if pruned:
+        log.info(f"[Sleep] Очистка устаревших знаний: {pruned} символов помечены is_legacy")
+    else:
+        log.info("[Sleep] Очистка устаревших знаний: нечего чистить")
+
+
+async def _check_shard_capacity():
+    """
+    Проверка занятости шардов — при достижении 75% отправляет уведомление
+    Архитектору (Telegram + админка, тот же канал что и остальные критичные
+    уведомления) с предложением добавить новый шард или зеркало.
+    Поддерживается только SHARD_PROVIDER=local (прямой доступ к диску).
+    Порог и лимит настраиваются через env без правки кода.
+    """
+    import os as _os
+    from shards.shard_client import _provider
+
+    if await _provider() != "local":
+        log.info("[Sleep] Проверка ёмкости шардов пропущена — "
+                  "поддерживается только SHARD_PROVIDER=local")
+        return
+
+    limit_gb = float(_os.getenv("SHARD_CAPACITY_LIMIT_GB", "15"))
+    threshold = float(_os.getenv("SHARD_CAPACITY_ALERT_PCT", "0.75"))
+    limit_bytes = limit_gb * (1024 ** 3)
+
+    total_size = 0
+    base = "/tmp/evo_shards"
+    if _os.path.isdir(base):
+        for dirpath, _, filenames in _os.walk(base):
+            for f in filenames:
+                try:
+                    total_size += _os.path.getsize(_os.path.join(dirpath, f))
+                except OSError:
+                    pass
+
+    usage_pct = total_size / limit_bytes if limit_bytes else 0
+    log.info(f"[Sleep] Ёмкость шарда: {total_size / (1024**3):.2f} ГБ / "
+              f"{limit_gb:.0f} ГБ ({usage_pct*100:.1f}%)")
+
+    if usage_pct >= threshold:
+        await notify_architect(
+            zone="shard_capacity",
+            problem=f"Занятость шарда достигла {usage_pct*100:.1f}% "
+                    f"({total_size/(1024**3):.2f} / {limit_gb:.0f} ГБ)",
+            options=[
+                {"description": "Добавить новый шард (расширить хранилище)",
+                 "consequences": "Новые символы распределяются на новый шард автоматически"},
+                {"description": "Подключить зеркало (SHARD_MIRROR_HOST)",
+                 "consequences": "Часть нагрузки уходит на зеркало, текущий шард не растёт"},
+                {"description": "Игнорировать — рост знаний в пределах нормы",
+                 "consequences": "Уведомление закрывается без действий, повтор при следующем росте"},
+            ]
+        )
 
 
 async def _find_ligature_candidates():
