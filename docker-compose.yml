@@ -28,6 +28,7 @@ services:
       - ./db/migrations/004_channel1_fields.sql:/docker-entrypoint-initdb.d/004_channel1_fields.sql
       - ./db/migrations/005_sessions.sql:/docker-entrypoint-initdb.d/005_sessions.sql
       - ./db/migrations/006_hnsw_index.sql:/docker-entrypoint-initdb.d/006_hnsw_index.sql
+      - ./db/migrations/007_universal_fundamental.sql:/docker-entrypoint-initdb.d/007_universal_fundamental.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U evo_user -d evo_core"]
       interval: 5s
