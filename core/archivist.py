@@ -153,6 +153,7 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
         if row and row['confirmed_by'] >= 3:
             log.info(f"[Лигатура] Кандидат: {parent['id']} confirmed_in={row['confirmed_in']}")
 
+    is_universal, context_conditions = await _classify_universality(original_tz)
     await insert_symbol({
         "id": symbol_id,
         "label": f"задача: {original_tz[:80]} | стек: {','.join(new_stack[:3])}",
@@ -165,8 +166,37 @@ async def _type_b(parent: dict, new_output: str, new_stack: list[str],
         "applicable_stacks": applied_stack,
         "confirmed_in": [_get_root_code(parent['science'])],  # короткий символ, не обрезок имени
         "shard_host": "", "shard_path": shard_path,
+        "is_universal": is_universal,
+        "context_conditions": context_conditions,
     })
     log.info(f"[Тип Б] Created {symbol_id}")
+
+
+async def _classify_universality(original_tz: str) -> tuple[bool, str]:
+    """
+    Единая точка проверки: универсально ли решение для ВСЕХ пользователей,
+    или это частный случай (личные предпочтения конкретного агента/юзера).
+    Требование Архитектора: ядро хранит только истинные для всех решения;
+    частные случаи не подмешиваются в общую выдачу (find_symbols фильтрует
+    is_universal=TRUE по умолчанию — см. P/N-фиксы pg_client.py).
+
+    Безопасный дефолт при сбое классификатора — "personal" (условное),
+    не "universal" — см. обоснование в ai_router.classify(personal_context).
+
+    Возвращает (is_universal: bool, context_conditions: str|None).
+    """
+    try:
+        verdict = await ai_router.classify(original_tz, "personal_context")
+    except Exception as e:
+        log.warning(f"[Archivist] personal_context классификация сбой: {e} "
+                    f"— безопасный дефолт: условное решение")
+        verdict = "personal"
+
+    if verdict == "universal":
+        return True, None
+    # context_conditions — исходное ТЗ пользователя (не выдумка модели),
+    # обрезано до разумной длины для метаданных
+    return False, original_tz[:300]
 
 
 async def _new_symbol(output: str, applied_stack: list[str],
@@ -190,6 +220,14 @@ async def _new_symbol(output: str, applied_stack: list[str],
     _root_symbol = _get_root_code(root)
     shard_path = f"/evo/{_root_symbol}/{symbol_id}.zst"
     await write_cell("", shard_path, output)
+    # Автосбор Канала 1 (СОН) по определению работает с публичными открытыми
+    # источниками — всегда универсален, классификация не нужна и не вызывается
+    # (экономия LLM-вызова на массовом фоновом процессе).
+    if auto_collected:
+        is_universal, context_conditions = True, None
+    else:
+        is_universal, context_conditions = await _classify_universality(original_tz)
+
     await insert_symbol({
         "id": symbol_id,
         "label": f"задача: {original_tz[:80]} | решение: {output[:80]}",
@@ -204,6 +242,9 @@ async def _new_symbol(output: str, applied_stack: list[str],
         "source_rating": source_rating,
         "source_type": source_type,
         "auto_collected": auto_collected,
+        # Универсальность решения
+        "is_universal": is_universal,
+        "context_conditions": context_conditions,
     })
     log.info(f"[{'Канал1' if auto_collected else 'Новый'}] Created {symbol_id}"
              + (f" src={source_url}" if source_url else ""))
