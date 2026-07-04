@@ -59,6 +59,17 @@ class SCLSymbol(BaseModel):
 
     version_ts: Optional[datetime] = None
 
+    # Универсальность vs частный случай (требование Архитектора: ядро
+    # хранит только истинные для ВСЕХ пользователей решения; частные
+    # случаи конкретного агента/пользователя не подмешиваются в общую выдачу)
+    is_universal: bool = True
+    context_conditions: Optional[str] = None  # заполнено только если is_universal=False
+
+    # Фундаментальные знания — защищены от автоочистки по низкому рейтингу
+    # даже если технология устарела, пока не найдено решение лучше
+    is_fundamental: bool = False
+    last_tech_check: Optional[datetime] = None
+
 
 class SearchRequest(BaseModel):
     query_vector: list[float]
