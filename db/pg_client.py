@@ -38,11 +38,18 @@ async def get_pool():
 
 async def find_symbols(query_vector: list[float], top_k: int = 5,
                        stack_filter: list[str] = None,
-                       exclude_legacy: bool = True) -> list[dict]:
+                       exclude_legacy: bool = True,
+                       include_conditional: bool = False) -> list[dict]:
     """
     Безопасный векторный поиск.
     Вектор передаётся как $1::vector параметр asyncpg — без f-string подстановки в SQL.
     P1 fix: убрана уязвимость .replace("${vec_str}", ...) — теперь полная параметризация.
+
+    include_conditional=False (по умолчанию) — требование Архитектора:
+    ядро выдаёт в общий картридж только is_universal=TRUE решения. Частные
+    случаи (context_conditions заполнен, is_universal=FALSE) не просачиваются
+    в чужие сессии. include_conditional=True используется только внутренними
+    процессами сверки (similarity check при архивации), не выдачей флагману.
     """
     pool = await get_pool()
     # Валидация вектора
@@ -56,6 +63,8 @@ async def find_symbols(query_vector: list[float], top_k: int = 5,
 
     if exclude_legacy:
         conditions.append("is_legacy = FALSE")
+    if not include_conditional:
+        conditions.append("is_universal = TRUE")
     if stack_filter:
         params.append(stack_filter)
         conditions.append(f"applicable_stacks && ${len(params)}::text[]")
