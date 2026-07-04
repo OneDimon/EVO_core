@@ -568,6 +568,9 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 - [x] Backend кабинетов — `api/routes/me.py`, `api/routes/admin.py::get_core_stats`
 - [x] Словарное сжатие ячеек шардов (`shards/zstd_codec.py::train_dictionary`, `shards/shard_client.py::train_dictionary_for_root`) — устраняет корневую рассинхронизацию science/символ (три связанных бага в `archivist.py`, `ai_router.classify`), СОН задача 6 переобучает словари автоматически
 - [x] nginx конфиг + docker-compose site-сервис (`site/nginx.conf`, `docker-compose.yml`)
+- [x] Универсальность/фундаментальность знаний — `is_universal`, `context_conditions`, `is_fundamental` (migration 007, HNSW индекс тоже §006)
+- [x] Автоочистка устаревших знаний + алерт 75% ёмкости шарда — `sleep_mode.py::_prune_outdated_knowledge`, `_check_shard_capacity`
+- [x] Масштабирование под тысячи пользователей — HNSW, пул 5-25/воркер, non-blocking zstd, advisory lock от гонки записи (см. AUDIT_SCALE_HARDENING.md)
 - [x] MCP Registry манифест (`site/mcp-manifest.json`)
 - [x] Аудиты P1-P16 и N1-N15 закрыты — код готов к деплою
 - [ ] Деплой на VPS (домен, SSL, .env, bootstrap.py)
