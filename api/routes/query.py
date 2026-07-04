@@ -35,13 +35,33 @@ async def query(req: QueryRequest):
         import asyncio
         asyncio.create_task(cache_session_plan(req.session_id, plan_data))
 
+    # Сигнал давности знания — обязывает флагмана к проверке актуальности
+    # (ШАГ 7 хук-допрос в FLAGSHIP_SYSTEM_PROMPT.md) не только для новых
+    # решений, но и для СТАРЫХ переиспользуемых картриджей. Без этого
+    # символ мог бы использоваться годами без единой проверки на устаревание,
+    # хотя правило "хук-допрос обязателен" (БЛОК 5 п.12) формально не нарушается.
+    TECH_CHECK_STALE_DAYS = 30
+    tech_check_required = False
+    days_since_verified = None
+    if result.get("symbols"):
+        from datetime import datetime, timezone
+        top = result["symbols"][0]
+        last_check = top.get("last_tech_check")
+        if last_check:
+            if last_check.tzinfo is None:
+                last_check = last_check.replace(tzinfo=timezone.utc)
+            days_since_verified = (datetime.now(timezone.utc) - last_check).days
+            tech_check_required = days_since_verified >= TECH_CHECK_STALE_DAYS
+
     if scenario == "full":
         return {
             "status": "cartridge_ready",
             "scenario": "full",
             "plan_description": result["plan_description"],
             "instructions": result["cartridge_steps"],
-            "rating": result["symbols"][0].get("rating_frequency", 0) if result["symbols"] else 0
+            "rating": result["symbols"][0].get("rating_frequency", 0) if result["symbols"] else 0,
+            "tech_check_required": tech_check_required,
+            "days_since_verified": days_since_verified,
         }
     elif scenario == "partial":
         return {
@@ -52,7 +72,9 @@ async def query(req: QueryRequest):
             "directive": (
                 "Смежный базис выдан. Адаптируй под свои вводные. "
                 "Протестируй в песочнице. Отчитайся."
-            )
+            ),
+            "tech_check_required": tech_check_required,
+            "days_since_verified": days_since_verified,
         }
     else:
         return {
