@@ -15,7 +15,9 @@ class ConciergeRequest(BaseModel):
 async def concierge(req: ConciergeRequest):
     if not req.concierge_answers:
         # Фаза 1: генерируем вопросы через AI Router
-        questions = await ai_router.generate(req.user_request, "concierge")
+        # fix: "concierge" не совпадал с ключом routing_rules "concierge_questions"
+        # (тот же паттерн бага что был у immune_system_patch/immune_patch, Урок 1)
+        questions = await ai_router.generate(req.user_request, "concierge_questions")
         return {
             "status": "concierge_questions",
             "questions": questions.split("\n")[:3]
