@@ -18,6 +18,11 @@ async def step_done(req: StepDoneRequest):
     if not plan:
         return {"status": "error", "message": "Session plan not found"}
 
+    # fix: next_step_requested=0 (или отрицательное) давал next_idx<0 —
+    # Python возвращает plan[-1] (ПОСЛЕДНИЙ шаг) вместо ошибки при
+    # отрицательной индексации. Валидация нижней границы обязательна.
+    if req.next_step_requested < 1:
+        return {"status": "error", "message": "next_step_requested должен быть >= 1"}
     next_idx = req.next_step_requested - 1
     if next_idx >= len(plan):
         return {"status": "plan_complete", "message": "All steps completed"}
