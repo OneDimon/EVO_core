@@ -41,11 +41,22 @@ async def _get_fail_count(session_id: str) -> int:
     return int(val) if val else 0
 
 
-async def _increment_fail(session_id: str):
+async def _increment_fail(session_id: str) -> int:
+    """
+    Атомарно увеличивает и возвращает НОВОЕ значение счётчика провалов.
+    fix: раньше _increment_fail (INCR) и _get_fail_count (отдельный GET)
+    были двумя независимыми Redis-вызовами — между ними при двух
+    параллельных провалах ОДНОЙ сессии (сетевой ретрай флагмана, дублирующий
+    запрос) оба вызова могли прочитать уже увеличенное другим значение,
+    пропустив промежуточный fix-directive шаг (сразу оба видят count>=3).
+    INCR возвращает новое значение атомарно — используем его напрямую,
+    не делаем отдельный GET после.
+    """
     r = await get_redis()
     key = f"evo:fails:{session_id}"
-    await r.incr(key)
+    new_count = await r.incr(key)
     await r.expire(key, FAIL_COUNTER_TTL)
+    return new_count
 
 
 async def _reset_fails(session_id: str):
@@ -65,15 +76,15 @@ async def verify(req: VerifyRequest) -> VerificationResult:
     # ── Шаг 1: workability ──────────────────────────────────────────
     if not req.workability_confirmed:
         failures.append("workability_confirmed = false — физическая проверка не пройдена")
-        await _increment_fail(req.session_id)
-        return await _fail_result(req, failures)
+        count = await _increment_fail(req.session_id)
+        return await _fail_result(req, failures, count)
 
     # ── Шаг 2: чеклист YMS-MMM через AI Router ──────────────────────
     yms_result = await ai_router.verify(req.output, str(req.cartridge))
     if not yms_result.get("passed", False):
         failures.extend(yms_result.get("failures", ["yms_check_failed"]))
-        await _increment_fail(req.session_id)
-        return await _fail_result(req, failures)
+        count = await _increment_fail(req.session_id)
+        return await _fail_result(req, failures, count)
 
     score = yms_result.get("score", 1.0)
 
@@ -106,9 +117,13 @@ async def verify(req: VerifyRequest) -> VerificationResult:
         )
 
 
-async def _fail_result(req: VerifyRequest, failures: list[str]) -> VerificationResult:
-    """Обработка провала — 1-2 раза: fix_directive, 3+ раза: reanimate."""
-    count = await _get_fail_count(req.session_id)
+async def _fail_result(req: VerifyRequest, failures: list[str], count: int) -> VerificationResult:
+    """
+    Обработка провала — 1-2 раза: fix_directive, 3+ раза: reanimate.
+    fix: count теперь передаётся напрямую из атомарного _increment_fail(),
+    отдельный _get_fail_count() здесь больше не вызывается — устраняет
+    гонку между INCR и последующим GET при параллельных провалах одной сессии.
+    """
     log.warning(f"[YMS-MMM] Fail #{count} session={req.session_id}: {failures}")
 
     if count >= 3:
