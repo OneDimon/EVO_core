@@ -18,6 +18,28 @@ class HookReplyRequest(BaseModel):
 @router.post("/hook_reply")
 async def hook_reply(req: HookReplyRequest):
     if not req.has_update:
+        # Флагман подтвердил: решение из картриджа всё ещё актуально
+        # относительно текущих технологий (ШАГ 7 FLAGSHIP_SYSTEM_PROMPT.md —
+        # обязательная проверка). Сбрасываем last_tech_check — следующая
+        # обязательная проверка (query.py::tech_check_required) снова
+        # наступит не раньше чем через TECH_CHECK_STALE_DAYS (30 дней).
+        # Без этого сброса символ вечно считался бы "устаревшим" даже
+        # сразу после успешной проверки.
+        from db.redis_client import get_session_plan
+        from db.pg_client import get_pool
+        plan = await get_session_plan(req.session_id)
+        if plan:
+            symbol_ids = [step.get("symbol_id") for step in plan if step.get("symbol_id")]
+            if symbol_ids:
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE scl_symbols SET last_tech_check = NOW() "
+                        "WHERE id = ANY($1::text[])",
+                        symbol_ids
+                    )
+                log.info(f"[HookReply] Актуальность подтверждена, "
+                         f"last_tech_check обновлён: {symbol_ids}")
         return {"status": "session_complete", "message": "База знаний актуальна."}
 
     # N6 fix: ранее update_description только логировался в ответ
