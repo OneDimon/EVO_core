@@ -120,6 +120,7 @@ async def _sleep_cycle():
         ("Статистика", _generate_stats),
         ("Автонаполнение ядра (Канал 1)", _auto_fill_knowledge),
         ("Переобучение словарей сжатия", _retrain_dictionaries),
+        ("Дефрагментация (пересжатие legacy-ячеек)", _defragment_shards),
     ]
 
     for name, fn in tasks:
@@ -451,6 +452,84 @@ async def _retrain_dictionaries():
         log.info(f"[Sleep] Переобучено словарей: {retrained}")
     else:
         log.info("[Sleep] Переобучение словарей: нечего обновлять")
+
+
+async def _defragment_shards():
+    """
+    Задача 8 цикла СОН — дефрагментация в текущей однослотовой архитектуре.
+
+    ВАЖНЫЙ АРХИТЕКТУРНЫЙ ФАКТ (проверено 2026-07-07): archivist.py уже пишет
+    КАЖДЫЙ новый символ сразу в папку своего макро-корня
+    (shard_path = f"/evo/{_root_symbol}/{symbol_id}.zst") — то есть
+    co-location по теме происходит НА ЭТАПЕ ЗАПИСИ, а не после. Физическое
+    "случайное разбрасывание с последующей сборкой" в описанном виде
+    релевантно только когда шардов НЕСКОЛЬКО (сейчас поддерживается только
+    ОДИН активный SHARD_PROVIDER — нет реестра из N шардов, см.
+    AI_ONBOARDING.md раздел "Критические находки").
+
+    Реальная польза дефрагментации СЕЙЧАС — пересжатие legacy-ячеек:
+    символы, записанные ДО того как словарь их раздела был обучен, хранятся
+    в старом (без словаря) zstd-формате — большем по размеру. Как только
+    словарь раздела появляется, дефрагментация пересжимает такие ячейки
+    С словарём — тот же путь на шарде, тот же symbol_id, только физический
+    размер сжатых байт становится меньше. Символы, лигатуры, R_f,
+    confirmed_by, evolved_from — НЕ ТРОГАЮТСЯ.
+
+    Когда появится реестр из N шардов (см. критические находки) — сюда же
+    добавится кросс-шардовое перемещение: находим символы одного макро-корня
+    раскиданные по РАЗНЫМ шардам (могло случиться если шард добавился между
+    двумя записями одной темы) — переносим на один, меняя ТОЛЬКО shard_host/
+    shard_path в БД (гиперлинк), содержимое ячейки и вся алгебра статичны.
+    """
+    from core.archivist import ROOT_CODES
+    from shards.shard_client import (
+        _get_dictionary, _local_list_cells, _local_read, _local_write,
+        _provider, _extract_root
+    )
+    from shards.zstd_codec import compress, decompress
+    import asyncio as _asyncio
+
+    if await _provider() != "local":
+        log.info("[Sleep] Дефрагментация пропущена — поддерживается "
+                  "только SHARD_PROVIDER=local (листинг файлов раздела)")
+        return
+
+    recompressed = 0
+    for science, symbol in ROOT_CODES.items():
+        if not _sleep_active:
+            break
+
+        zdict = await _get_dictionary(symbol)
+        if not zdict:
+            continue  # словарь ещё не обучен для этого раздела — нечего пересжимать
+
+        paths = _local_list_cells(symbol)
+        for path in paths:
+            if not _sleep_active:
+                break
+            try:
+                raw = _local_read(path)
+                # Пытаемся разжать СО словарём — если получилось, ячейка уже
+                # современная (записана после обучения словаря), пропускаем
+                try:
+                    await _asyncio.to_thread(decompress, raw, zdict)
+                    continue  # уже в актуальном формате
+                except Exception:
+                    pass  # legacy-формат без словаря — пересжимаем ниже
+
+                content = await _asyncio.to_thread(decompress, raw)  # legacy read
+                new_raw = await _asyncio.to_thread(compress, content, zdict)
+                if len(new_raw) < len(raw):
+                    _local_write(path, new_raw)
+                    recompressed += 1
+            except Exception as e:
+                log.warning(f"[Sleep] Дефрагментация: пропущена {path}: {e}")
+
+    if recompressed:
+        log.info(f"[Sleep] Дефрагментация: пересжато {recompressed} legacy-ячеек "
+                  f"под актуальные словари разделов")
+    else:
+        log.info("[Sleep] Дефрагментация: нечего пересжимать")
 
 
 async def apply_architect_choice(notif_id: int, choice: int):
