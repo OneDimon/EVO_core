@@ -265,34 +265,158 @@ async def _write(prov: str, path: str, data: bytes) -> str:
     if prov == "r2":       return await _r2_write(path, data)
     return _local_write(path, data)
 
-async def _gdrive_read(path: str) -> bytes:
+_gdrive_token_cache = {"token": None, "expires_at": 0}
+_gdrive_folder_cache: dict = {}  # "parent_id/name" -> folder_id, память процесса
+
+
+async def _gdrive_get_access_token() -> str:
+    """
+    fix: раньше ожидался уже готовый SHARD_GDRIVE_TOKEN (Bearer) в конфиге —
+    но у нас service account JSON key, не готовый токен. Токен получаем
+    сами через JWT-обмен (стандартный Google OAuth2 service account flow,
+    RFC 7523), кэшируем в памяти процесса с запасом 60с до истечения.
+    """
+    import time
+    now = time.time()
+    if _gdrive_token_cache["token"] and _gdrive_token_cache["expires_at"] > now + 60:
+        return _gdrive_token_cache["token"]
+
+    import jwt, json as _j, httpx
     from core.config_manager import get
+    creds_raw = await get("SHARD_GDRIVE_CREDENTIALS_JSON")
+    if not creds_raw:
+        raise RuntimeError(
+            "SHARD_GDRIVE_CREDENTIALS_JSON не задан в конфиге — "
+            "вставь содержимое service account JSON ключа целиком"
+        )
+    creds = _j.loads(creds_raw)
+
+    claims = {
+        "iss": creds["client_email"],
+        "scope": "https://www.googleapis.com/auth/drive",
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": int(now),
+        "exp": int(now) + 3600,
+    }
+    assertion = jwt.encode(claims, creds["private_key"], algorithm="RS256")
+
+    async with httpx.AsyncClient() as c:
+        resp = await c.post("https://oauth2.googleapis.com/token", data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": assertion,
+        })
+    resp.raise_for_status()
+    data = resp.json()
+    _gdrive_token_cache["token"] = data["access_token"]
+    _gdrive_token_cache["expires_at"] = now + data.get("expires_in", 3600)
+    return _gdrive_token_cache["token"]
+
+
+async def _gdrive_ensure_folder(name: str, parent_id: str, token: str) -> str:
+    """
+    Находит папку `name` внутри `parent_id`, создаёт если не существует.
+    Кэш в памяти процесса — не пересоздаёт/не ищет повторно ту же папку
+    в рамках жизни воркера. Автосоздаёт структуру /evo/{root}/ внутри
+    корневой папки шарда (SHARD_GDRIVE_ROOT_FOLDER).
+    """
+    cache_key = f"{parent_id}/{name}"
+    if cache_key in _gdrive_folder_cache:
+        return _gdrive_folder_cache[cache_key]
+
     import httpx
-    token  = await get("SHARD_GDRIVE_TOKEN")
-    folder = await get("SHARD_GDRIVE_FOLDER")
-    name   = path.split("/")[-1]
+    async with httpx.AsyncClient() as c:
+        q = (f"name='{name}' and '{parent_id}' in parents "
+             f"and mimeType='application/vnd.google-apps.folder' and trashed=false")
+        r = await c.get("https://www.googleapis.com/drive/v3/files",
+            params={"q": q, "fields": "files(id)"},
+            headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        files = r.json().get("files", [])
+        if files:
+            folder_id = files[0]["id"]
+        else:
+            import json as _j
+            meta = _j.dumps({
+                "name": name, "parents": [parent_id],
+                "mimeType": "application/vnd.google-apps.folder",
+            })
+            r2 = await c.post("https://www.googleapis.com/drive/v3/files",
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"},
+                content=meta)
+            r2.raise_for_status()
+            folder_id = r2.json()["id"]
+            log.info(f"[Shards/gdrive] Создана папка '{name}' внутри {parent_id}")
+
+    _gdrive_folder_cache[cache_key] = folder_id
+    return folder_id
+
+
+async def _gdrive_resolve_target_folder(path: str, token: str) -> str:
+    """
+    Путь вида /evo/{root}/file.zst → находит/создаёт вложенность
+    ROOT_FOLDER/evo/{root}/, зеркалит структуру локального провайдера.
+    """
+    from core.config_manager import get
+    root_folder_id = await get("SHARD_GDRIVE_ROOT_FOLDER")
+    if not root_folder_id:
+        raise RuntimeError("SHARD_GDRIVE_ROOT_FOLDER не задан — id корневой папки шарда (memo)")
+
+    parts = [p for p in path.strip("/").split("/")[:-1] if p]
+    current = root_folder_id
+    for part in parts:
+        current = await _gdrive_ensure_folder(part, current, token)
+    return current
+
+
+async def _gdrive_read(path: str) -> bytes:
+    import httpx
+    token = await _gdrive_get_access_token()
+    folder = await _gdrive_resolve_target_folder(path, token)
+    name = path.split("/")[-1]
     async with httpx.AsyncClient() as c:
         r = await c.get("https://www.googleapis.com/drive/v3/files",
-            params={"q": f"name='{name}' and '{folder}' in parents", "fields": "files(id)"},
+            params={"q": f"name='{name}' and '{folder}' in parents and trashed=false",
+                    "fields": "files(id)"},
             headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
         files = r.json().get("files", [])
         if not files: raise FileNotFoundError(name)
         r2 = await c.get(f"https://www.googleapis.com/drive/v3/files/{files[0]['id']}",
             params={"alt": "media"}, headers={"Authorization": f"Bearer {token}"})
+        r2.raise_for_status()
         return r2.content
 
 async def _gdrive_write(path: str, data: bytes) -> str:
-    from core.config_manager import get
-    import httpx, json as _j
-    token  = await get("SHARD_GDRIVE_TOKEN")
-    folder = await get("SHARD_GDRIVE_FOLDER")
-    name   = path.split("/")[-1]
-    meta   = _j.dumps({"name": name, "parents": [folder]})
+    """
+    fix: раньше `meta` формировался, но НИКОГДА не отправлялся (мёртвый код) —
+    Drive API получал только сырые байты без имени/родителя. multipart/related
+    upload требует body с двумя частями (JSON-метаданные + бинарные данные),
+    разделёнными boundary, с правильным Content-Type на каждую часть.
+    """
+    import httpx
+    token = await _gdrive_get_access_token()
+    folder = await _gdrive_resolve_target_folder(path, token)
+    name = path.split("/")[-1]
+
+    boundary = "evo_core_shard_boundary"
+    import json as _j
+    meta = _j.dumps({"name": name, "parents": [folder]})
+    body = (
+        f"--{boundary}\r\n"
+        f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{meta}\r\n"
+        f"--{boundary}\r\n"
+        f"Content-Type: application/octet-stream\r\n\r\n"
+    ).encode("utf-8") + data + f"\r\n--{boundary}--".encode("utf-8")
+
     async with httpx.AsyncClient() as c:
-        await c.post("https://www.googleapis.com/upload/drive/v3/files",
+        r = await c.post("https://www.googleapis.com/upload/drive/v3/files",
             params={"uploadType": "multipart"},
-            headers={"Authorization": f"Bearer {token}"},
-            content=data)
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": f"multipart/related; boundary={boundary}"},
+            content=body)
+        r.raise_for_status()
     return path
 
 async def _github_read(path: str) -> bytes:

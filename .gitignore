@@ -1,0 +1,21 @@
+# EVO-core .gitignore
+
+# Артефакты стороннего memory-плагина Claude Code (rohitg00/agentmemory) —
+# не относятся к продукту EVO-core, случайно закоммичены в раннюю сессию
+.agents/
+data/
+skills-lock.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Локальные данные шардов (dev-режим, provider=local)
+/tmp/evo_shards/
+
+# Секреты — НИКОГДА не коммитить
+*.env
+!.env.example
+server_data/config/credentials.json
