@@ -9,7 +9,11 @@ log = logging.getLogger("evo.crypto")
 
 SENSITIVE_KEYS = {
     "TG_BOT_TOKEN", "TG_ADMIN_CHAT_ID",
-    "SHARD_GDRIVE_TOKEN", "SHARD_GITHUB_TOKEN",
+    # fix: SHARD_GDRIVE_TOKEN переименован в SHARD_GDRIVE_CREDENTIALS_JSON
+    # (shard_client.py — service account JSON вместо готового Bearer токена).
+    # Старое имя оставлено в списке на случай легаси-значений в БД.
+    "SHARD_GDRIVE_TOKEN", "SHARD_GDRIVE_CREDENTIALS_JSON",
+    "SHARD_GITHUB_TOKEN",
     "SHARD_R2_ACCESS_KEY", "SHARD_R2_SECRET_KEY",
     "GEMINI_API_KEY", "OPENAI_API_KEY",
     "EVO_HMAC_SECRET", "EVO_API_SECRET", "EVO_MASTER_KEY",

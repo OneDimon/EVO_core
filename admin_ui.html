@@ -134,8 +134,8 @@ function ConfigPanel({ token }) {
       <div className="input-row">
         <select onChange={e=>setKey(e.target.value)} value={key} style={{width:200}}>
           <option value="">Выбрать ключ...</option>
-          {['TG_BOT_TOKEN','TG_ADMIN_CHAT_ID','SHARD_PROVIDER','SHARD_GDRIVE_TOKEN',
-            'SHARD_GDRIVE_FOLDER','SHARD_GITHUB_TOKEN','SHARD_GITHUB_REPO',
+          {['TG_BOT_TOKEN','TG_ADMIN_CHAT_ID','SHARD_PROVIDER','SHARD_GDRIVE_CREDENTIALS_JSON',
+            'SHARD_GDRIVE_ROOT_FOLDER','SHARD_GITHUB_TOKEN','SHARD_GITHUB_REPO',
             'SHARD_R2_ACCOUNT_ID','SHARD_R2_ACCESS_KEY','SHARD_R2_SECRET_KEY',
             'SHARD_R2_BUCKET','GEMINI_API_KEY','OLLAMA_HOST','N8N_WEBHOOK_URL',
             'EVO_SERVER_URL'].map(k =>
