@@ -13,7 +13,11 @@
 
 -- Требует pgvector >= 0.5.0 (образ pgvector/pgvector:pg16 уже содержит нужную версию).
 
-DROP INDEX IF EXISTS scl_symbols_vector_idx;
+-- fix: имя индекса в 001_init.sql — scl_vector_idx, не scl_symbols_vector_idx.
+-- Ошибка привела к тому, что DROP тихо не срабатывал (IF EXISTS проглатывал
+-- ошибку) и оба индекса (ivfflat + hnsw) сосуществовали, дублируя расходы
+-- на поддержание индекса при каждой записи.
+DROP INDEX IF EXISTS scl_vector_idx;
 
 CREATE INDEX IF NOT EXISTS scl_symbols_vector_hnsw_idx
     ON scl_symbols USING hnsw (vector vector_cosine_ops)
