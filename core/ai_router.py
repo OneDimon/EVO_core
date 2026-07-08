@@ -10,7 +10,15 @@ import httpx
 log = logging.getLogger("evo.ai_router")
 
 class AIRouter:
-    def __init__(self, config_path: str = "config/ai_router.json"):
+    def __init__(self, config_path: str = None):
+        # fix: путь был чисто относительным (config/ai_router.json) — ломался
+        # при запуске скриптов не из корня репо (тесты, bootstrap с другим CWD).
+        # В реальном контейнере (Dockerfile WORKDIR /app) это не проявлялось,
+        # но хрупко. Резолвим относительно расположения ЭТОГО файла — работает
+        # независимо от текущей рабочей директории вызывающего кода.
+        if config_path is None:
+            repo_root = Path(__file__).resolve().parent.parent
+            config_path = str(repo_root / "config" / "ai_router.json")
         with open(config_path) as f:
             self.cfg = json.load(f)["evo_ai_router"]
         self._client = httpx.AsyncClient(timeout=30)
@@ -130,7 +138,19 @@ class AIRouter:
                 f"this knowledge? Return ONLY the exact name, nothing else:\n{names}\n\n"
                 f"Knowledge: {text}"
             )
-            result = await self._call_with_fallback(prompt, task)
+            # fix: раньше call_with_fallback не был обёрнут в try/except —
+            # если ВСЕ провайдеры недоступны (нет ключа + нет сети + нет
+            # локальной Ollama), _call_with_fallback бросает RuntimeError
+            # ДО того как срабатывала логика безопасного дефолта ниже.
+            # Найдено живым тестовым прогоном 2026-07-07 (все провайдеры были
+            # недоступны в песочнице без реальных ключей — классификация
+            # падала с необработанным исключением вместо возврата дефолта).
+            try:
+                result = await self._call_with_fallback(prompt, task)
+            except Exception as e:
+                log.warning(f"[ai_router] classify(macro_root) все провайдеры "
+                            f"недоступны: {e} — дефолт 'Философия/Логика'")
+                return "Философия/Логика"
             candidate = result.strip()
             if candidate in ROOT_CODES:
                 return candidate
@@ -180,7 +200,19 @@ class AIRouter:
         prompts = {
             "type_ab": f"Is this knowledge update (A) improvement of same approach or (B) different tools/conditions? Return ONLY 'A' or 'B': {text}",
         }
-        return await self._call_with_fallback(prompts.get(task, text), task)
+        # fix: как и macro_root — не было try/except вокруг вызова.
+        # Безопасный дефолт при сбое — "B" (новая ветка), НЕ "A" (перезапись):
+        # A стирает предыдущую версию в legacy, B просто добавляет новую
+        # запись рядом со старой. При неуверенности не терять информацию —
+        # соответствует принципу "хронология неприкосновенна" (§17 протокола).
+        try:
+            return await self._call_with_fallback(prompts.get(task, text), task)
+        except Exception as e:
+            if task == "type_ab":
+                log.warning(f"[ai_router] classify(type_ab) все провайдеры "
+                            f"недоступны: {e} — безопасный дефолт 'B' (не перезаписывать)")
+                return "B"
+            raise
 
     async def generate(self, context: str, task: str) -> str:
         """Генерация текста: evolution_note, concierge вопросы и др."""

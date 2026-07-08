@@ -29,9 +29,15 @@ def _validate_path(path: str) -> str:
     normalized = posixpath.normpath(path)
     if ".." in normalized or not normalized.startswith("/evo/"):
         raise ValueError(f"Недопустимый путь к шарду: {path}")
-    # Только безопасные символы
+    # Только безопасные символы.
+    # КРИТИЧНЫЙ ФИКС (найден живым тестовым прогоном 2026-07-07): регулярка
+    # была ASCII-only и блокировала САМИ греческие символы, из которых
+    # формируется путь на шарде (_get_root_code() возвращает Φ/τ/κ/... —
+    # см. SCL_FRACTAL_PROTOCOL.md §5). Запись ЛЮБОГО символа с канонической
+    # нотацией падала бы в проде на этой проверке. Добавлен явный диапазон
+    # греческого алфавита (U+0370–U+03FF) и символ лигатуры ⊕ (U+2295).
     import re
-    if not re.match(r"^[/a-zA-Z0-9_.^{}\-]+$", normalized):
+    if not re.match(r"^[/a-zA-Z0-9_.^{}\-\u0370-\u03FF\u2295]+$", normalized):
         raise ValueError(f"Недопустимые символы в пути: {path}")
     return normalized
 

@@ -12,7 +12,16 @@ async def get_redis():
 
 async def cache_symbol(session_id: str, symbol_id: str, data: dict, ttl: int = 3600):
     r = await get_redis()
-    await r.setex(f"evo:session:{session_id}:sym:{symbol_id}", ttl, json.dumps(data))
+    # fix: data приходит из find_symbols() — dict(asyncpg.Record), содержит
+    # datetime-объекты (last_updated, last_tech_check, created_at). Обычный
+    # json.dumps падает на них с TypeError — это роняло КАЖДЫЙ успешный
+    # поиск в проде (find_symbols всегда возвращает хотя бы одну timestamp-
+    # колонку). Найдено живым тестовым прогоном 2026-07-07.
+    # default=str конвертирует datetime/Decimal/etc в строку для кэша —
+    # это временный кэш для отображения, не источник истины, потеря
+    # типизации здесь не критична.
+    await r.setex(f"evo:session:{session_id}:sym:{symbol_id}", ttl,
+                   json.dumps(data, default=str))
 
 async def get_cached_symbol(session_id: str, symbol_id: str) -> dict | None:
     r = await get_redis()
