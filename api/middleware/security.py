@@ -80,6 +80,7 @@ NO_AUTH_PATHS = {
     "/health", "/", "/docs", "/openapi.json",
     "/api/v1/handshake",   # первичное подключение — без токена
     "/api/v1/register",    # P11: регистрация без API-ключа
+    "/admin",               # fix: HTML-страница админки, авторизация внутри через X-Admin-Token в JS, не через middleware
 }
 
 # ── Middleware class ──────────────────────────────────────────────────────────
