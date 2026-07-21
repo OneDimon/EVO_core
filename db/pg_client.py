@@ -1,6 +1,8 @@
 """PostgreSQL + pgvector клиент для SCL символов."""
-import asyncpg, os, json
+import asyncpg, os, json, logging
 from typing import Optional
+
+log = logging.getLogger("evo.pg_client")
 
 _pool = None
 

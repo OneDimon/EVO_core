@@ -74,6 +74,31 @@ services:
     command: >
       sh -c "uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4}"
 
+  # Блок 07 — Immune System reanimator workflow (см. n8n/README_n8n.md)
+  n8n:
+    image: n8nio/n8n
+    container_name: evo_n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD не задан в .env}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - EVO_API_SECRET=${EVO_API_SECRET}
+    volumes:
+      - evo_n8n_data:/home/node/.n8n
+    depends_on:
+      - api
+    restart: unless-stopped
+    # Воркфлоу n8n/evo_immune_system_workflow.json нужно импортировать вручную
+    # через UI (Workflows → Import from File) и активировать — n8n не грузит
+    # воркфлоу автоматически из файла при старте контейнера. После активации
+    # прописать полученный webhook URL в N8N_WEBHOOK_URL (.env или Admin API,
+    # см. n8n/README_n8n.md п.4). Изнутри docker-сети callback от воркфлоу
+    # в ядро идёт на http://api:8000/api/v1/patch_callback.
+
   # Фаза 3 — публичный сайт
   site:
     image: nginx:alpine
@@ -90,3 +115,4 @@ services:
 volumes:
   evo_pgdata:
   evo_redis_data:
+  evo_n8n_data:

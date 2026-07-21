@@ -24,17 +24,22 @@ case "$1" in
     check_env
     ;;
   migrate)
+    # Прогоняет ВСЕ файлы db/migrations/*.sql по порядку (сортировка по имени,
+    # 001..999). Каждая миграция в этом проекте написана идемпотентно
+    # (IF NOT EXISTS / IF EXISTS / DO $$ проверка column существования),
+    # поэтому безопасно гонять этот список повторно на уже существующей БД —
+    # раньше здесь были захардкожены только 001-003, и 004-008 тихо не
+    # накатывались на БД, созданные до их появления (они применяются
+    # автоматически только при первом создании volume postgres через
+    # docker-entrypoint-initdb.d).
     echo "Running migrations..."
-    docker exec evo_postgres psql -U evo_user -d evo_core \
-      -f /docker-entrypoint-initdb.d/001_init.sql
-    docker exec evo_postgres psql -U evo_user -d evo_core \
-      -f /tmp/002_config.sql 2>/dev/null || true
-    docker cp db/migrations/002_config.sql evo_postgres:/tmp/
-    docker exec evo_postgres psql -U evo_user -d evo_core \
-      -f /tmp/002_config.sql
-    docker cp db/migrations/003_users_security.sql evo_postgres:/tmp/
-    docker exec evo_postgres psql -U evo_user -d evo_core \
-      -f /tmp/003_users_security.sql
+    for f in $(ls db/migrations/*.sql | sort); do
+      name=$(basename "$f")
+      echo "  → $name"
+      docker cp "$f" evo_postgres:/tmp/"$name"
+      docker exec evo_postgres psql -U evo_user -d evo_core -v ON_ERROR_STOP=1 \
+        -f /tmp/"$name"
+    done
     echo "✅ Migrations done"
     ;;
   bootstrap)

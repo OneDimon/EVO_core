@@ -47,7 +47,6 @@ async def result(req: ResultRequest):
     if not vresult.passed:
         if vresult.action == "reanimate":
             # БЛОК 07: Immune System
-            import asyncio
             from core.immune_system import reanimate
             asyncio.create_task(reanimate(
                 session_id=req.session_id,
@@ -55,7 +54,7 @@ async def result(req: ResultRequest):
                 base_instructions=str(req.cartridge or {}),
                 faulty_output=req.result,
                 error_log="; ".join(vresult.failures),
-                callback_url=f"/api/v1/patch_callback"
+                callback_url="/api/v1/patch_callback"
             ))
             return {
                 "status": "reanimate",
