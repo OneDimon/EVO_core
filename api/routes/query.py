@@ -1,8 +1,9 @@
 """POST /api/v1/query — главный поиск: план+стек → картридж."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from core.librarian import search
+from core.signature import verify_request, sign_response
 
 router = APIRouter()
 
@@ -11,9 +12,13 @@ class QueryRequest(BaseModel):
     user_request: str
     flagship_plan: list[str] = []
     context: Optional[dict] = None
+    evo_signature: Optional[str] = None
 
 @router.post("/query")
 async def query(req: QueryRequest):
+    if not await verify_request(req.model_dump(), req.session_id):
+        raise HTTPException(401, "invalid_evo_signature")
+
     stack = (req.context or {}).get("detected_stack", [])
 
     result = await search(
@@ -54,7 +59,7 @@ async def query(req: QueryRequest):
             tech_check_required = days_since_verified >= TECH_CHECK_STALE_DAYS
 
     if scenario == "full":
-        return {
+        return await sign_response({
             "status": "cartridge_ready",
             "scenario": "full",
             "plan_description": result["plan_description"],
@@ -62,9 +67,9 @@ async def query(req: QueryRequest):
             "rating": result["symbols"][0].get("rating_frequency", 0) if result["symbols"] else 0,
             "tech_check_required": tech_check_required,
             "days_since_verified": days_since_verified,
-        }
+        }, req.session_id)
     elif scenario == "partial":
-        return {
+        return await sign_response({
             "status": "cartridge_partial",
             "scenario": "partial",
             "plan_description": result["plan_description"],
@@ -75,9 +80,9 @@ async def query(req: QueryRequest):
             ),
             "tech_check_required": tech_check_required,
             "days_since_verified": days_since_verified,
-        }
+        }, req.session_id)
     else:
-        return {
+        return await sign_response({
             "status": "cartridge_empty",
             "scenario": "gap",
             "directive": (
@@ -85,4 +90,4 @@ async def query(req: QueryRequest):
                 "GitHub (высокорейтинговые), официальная документация, "
                 "маркетплейсы скиллов. Протестируй до зелёных статусов. Отчитайся."
             )
-        }
+        }, req.session_id)

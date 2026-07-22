@@ -3,11 +3,12 @@ POST /api/v1/result — отчёт флагмана.
 Фаза 1: подключён YMS-MMM verifier + контур Obsidian.
 """
 import asyncio, logging
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from core.verifier import VerifyRequest, verify
 from core.obsidian import process as obsidian_process, generate_hook_query
+from core.signature import verify_request, sign_response
 
 log = logging.getLogger("evo.result")
 router = APIRouter()
@@ -27,9 +28,13 @@ class ResultRequest(BaseModel):
                                  # Флагман ОБЯЗАН передавать оригинальное ТЗ пользователя.
     cartridge: Optional[dict] = None
     notes: Optional[str] = None
+    evo_signature: Optional[str] = None
 
 @router.post("/result")
 async def result(req: ResultRequest):
+    if not await verify_request(req.model_dump(), req.session_id):
+        raise HTTPException(401, "invalid_evo_signature")
+
     vreq = VerifyRequest(
         session_id=req.session_id,
         output=req.result,
@@ -56,16 +61,16 @@ async def result(req: ResultRequest):
                 error_log="; ".join(vresult.failures),
                 callback_url="/api/v1/patch_callback"
             ))
-            return {
+            return await sign_response({
                 "status": "reanimate",
                 "message": "Реаниматор активирован. Патч будет готов через /api/v1/patch_callback",
                 "failures": vresult.failures
-            }
-        return {
+            }, req.session_id)
+        return await sign_response({
             "status": "failed",
             "reason": "; ".join(vresult.failures),
             "fix_directive": vresult.fix_directive
-        }
+        }, req.session_id)
 
     # Запускаем Obsidian асинхронно — пользователь не ждёт
     asyncio.create_task(obsidian_process(
@@ -79,11 +84,11 @@ async def result(req: ResultRequest):
     ))
 
     hook = await generate_hook_query(req.applied_stack)
-    return {
+    return await sign_response({
         "status": "verified",
         "action": vresult.action,
         "score": vresult.score,
         "delta_type": vresult.delta_type,
         "message": "Результат верифицирован. Передай пользователю.",
         "hook_query": hook
-    }
+    }, req.session_id)

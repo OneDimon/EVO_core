@@ -11,6 +11,7 @@
 - `pg_client.py` — asyncpg-пул, `find_symbols`, `get_symbol`, `increment_rating`.
 - `redis_client.py` — кэш символов, rate-limit счётчики.
 - `users.py` — пользователи/сессии.
+- `sessions.py` — чтение `evo_sessions` (hmac_key для `core/signature.py`).
 
 ## Правила
 - **Никогда не редактировать уже применённые миграции 001-008** — только
