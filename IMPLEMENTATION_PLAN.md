@@ -553,7 +553,7 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 ### ФАЗА 2: Транспорт + Иммунная система ✅ ВЫПОЛНЕНО
 - [x] CLI-скелетонизатор + detect_stack (`core/cli_layer.py`)
 - [x] MCP-сервер JSON-RPC 2.0 (`core/mcp_server.py` + `api/routes/mcp.py`)
-- [x] n8n реаниматор (`n8n/evo_immune_system_workflow.json` + `core/immune_system.py`)
+- [x] ~~n8n реаниматор~~ (`n8n/evo_immune_system_workflow.json` + `core/immune_system.py`) — **обновление 2026-07-22:** n8n-часть удалена как неиспользуемая, реаниматор целиком in-process, см. `n8n/MIGRATED_TO_CODE.md`
 - [x] Маршрутизация backoff 5s/15s/45s + Ollama fallback (`config/ai_router.json`)
 - [x] patch_callback эндпоинт (`api/routes/patch_callback.py`)
 - [x] Тесты: `tests/test_full.py` — 20 тестов ✅

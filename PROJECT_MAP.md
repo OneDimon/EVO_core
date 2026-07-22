@@ -63,8 +63,7 @@ evo-core/
 │   └── shard_client.py         ✅ path traversal защита + autopatch + 4 провайдера
 │
 ├── n8n/
-│   ├── evo_immune_system_workflow.json ✅ БЛОК 07 воркфлоу
-│   └── README_n8n.md           ✅ инструкция деплоя
+│   └── MIGRATED_TO_CODE.md     ℹ️  историческая заметка: Блок 07 — in-code, n8n не используется
 │
 ├── config/
 │   ├── ai_router.json          ✅ Gemini/Ollama роутинг
@@ -104,7 +103,7 @@ evo-core/
 | **04** CLI Layer | core/cli_layer.py | 🔵 Полностью готов | 01✅ |
 | **05** MCP Server | core/mcp_server.py | 🔵 Полностью готов | 01✅ |
 | **06** YMS-MMM+Obsidian | verifier+obsidian | 🔵 Полностью готов | 01✅ 02✅ 07✅ |
-| **07** Immune System | core/immune_system.py + n8n/ | 🔵 Полностью готов | 06✅ 01✅ |
+| **07** Immune System | core/immune_system.py (in-process) | 🔵 Полностью готов | 06✅ 01✅ |
 | **AI Router** | core/ai_router.py | 🔵 Готов | все |
 | **Config+Admin** | config_manager+admin+admin_ui | 🔵 Готов | все |
 | **Sleep Mode** | core/sleep_mode.py | 🔵 Готов | APScheduler |
@@ -141,7 +140,7 @@ evo-core/
 02 ──read/write───→ 03 shard_client                    ✅
 03 ──autopatch────→ 02 pg._attach_link() [auto]        ✅
 06 ──Тип А/Б──────→ 02 archivist._type_a/_type_b       ✅
-07 ──n8n webhook──→ /api/v1/patch_callback             ✅
+07 ──in-process────→ /api/v1/patch_callback             ✅
 all ──ai──────────→ AI Router Gemini/Ollama            ✅
 all ──config──────→ config_manager → evo_config [enc] ✅
 security ─────────→ middleware → evo_users+sessions   ✅
@@ -182,8 +181,7 @@ open http://localhost:8000/admin
 
 # 7. Настроить TG в Admin UI → внести TG_BOT_TOKEN + TG_ADMIN_CHAT_ID
 # 8. Настроить шарды в Admin UI → SHARD_PROVIDER + токены
-# 9. Импортировать n8n воркфлоу: n8n/evo_immune_system_workflow.json
-# 10. Тесты
+# 9. Тесты
 EVO_ENV=development python tests/test_full.py  # 20 тестов
 ```
 

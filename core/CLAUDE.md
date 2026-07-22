@@ -22,6 +22,7 @@
 | `config_manager.py` | Чтение/запись `evo_config` в БД, шифрование через `crypto.py` |
 | `crypto.py` | AES/Fernet-шифрование sensitive-полей. `SENSITIVE_KEYS` — обновлять при добавлении нового секрета |
 | `knowledge_collector.py` | Сканер "белых зон" знаний (`_scan_knowledge_gaps`) |
+| `signature.py` | Единая точка HMAC-подписи/верификации `evo_signature` протокола ядро↔флагман (`sign_response()`/`verify_request()`), ключ — `evo_sessions.hmac_key` (см. `db/sessions.py`) |
 | `verifier.py`, `mcp_server.py` | см. выше |
 
 ## Правила
@@ -30,3 +31,7 @@
 - Новый секрет в конфиге → добавить в `crypto.py::SENSITIVE_KEYS`.
 - Для идентификаторов/кодов — сверяться с `SCL_FRACTAL_PROTOCOL.md` /
   `SCL_SYMBOLIC_NOTATION.md`, не изобретать параллельную таксономию.
+- Любой новый роут протокола с `session_id` (по образцу `/query`, `/result`,
+  `/concierge`, `/step_done`, `/hook_reply`, `/patch_callback`) — обязан
+  верифицировать вход через `signature.verify_request()` и подписывать выход
+  через `signature.sign_response()`. Не изобретать HMAC-логику на месте.

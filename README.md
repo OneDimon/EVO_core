@@ -64,7 +64,7 @@
     │   БЛОК 07   │      │   БЛОК 05    │
     │  Иммунная   │      │  MCP-сервер  │
     │  система    │      │  Транспорт   │
-    │ n8n+Gemini  │      │  исполнения  │
+    │Gemini+Ollama│      │  исполнения  │
     └─────────────┘      └──────────────┘
 ```
 
@@ -80,7 +80,7 @@
 | 04 | **CLI Layer** | Скелетонизатор контекста. Сжимает файлы проекта до сигнала перед отправкой флагману | [→ карта](BLOCK_04_cli_layer.md) | 01, 05 |
 | 05 | **MCP Server** | Транспорт исполнения. JSON-RPC шлюз для физических действий во внешних средах | [→ карта](BLOCK_05_mcp_server.md) | 01, 04 |
 | 06 | **YMS-MMM** | Верификатор. Перехватывает вывод флагмана, проверяет 100% соответствие ТЗ | [→ карта](BLOCK_06_ymm_verifier.md) | 01, 07 |
-| 07 | **Immune System** | Реаниматор. n8n + Gemini (fallback: Ollama). Активируется при 3 провалах верификации | [→ карта](BLOCK_07_immune_system.md) | 06, 01 |
+| 07 | **Immune System** | Реаниматор. Полностью в коде: Gemini → Gemini Flash → Ollama fallback. Активируется при 3 провалах верификации | [→ карта](BLOCK_07_immune_system.md) | 06, 01 |
 | 00 | **README / Nav** | Этот файл. Карта всего проекта | — | все |
 
 ---
@@ -95,7 +95,7 @@
 | 04 CLI Layer | 🔵 Сшит и проверен | Фаза 2 | `core/cli_layer.py` |
 | 05 MCP Server | 🔵 Сшит и проверен | Фаза 2 | `core/mcp_server.py` |
 | 06 YMS-MMM | 🔵 Сшит и проверен | Фаза 1 | `core/verifier.py` + `core/obsidian.py` |
-| 07 Immune System | 🔵 Сшит и проверен | Фаза 2 | `core/immune_system.py` + `n8n/` |
+| 07 Immune System | 🔵 Сшит и проверен | Фаза 2 | `core/immune_system.py` (in-process, без внешних сервисов) |
 | Канал 1 (СОН) | 🔵 Сшит и проверен | Фаза 4 | `core/knowledge_collector.py` + `core/sleep_mode.py` |
 | Безопасность | 🔵 Сшит и проверен | Фаза 4 | `api/middleware/security.py` + `core/crypto.py` + `db/users.py` |
 | Публичный сайт | 🟡 Готов, нужен деплой | Фаза 3 | `site/index.html` (Dark High-Tech + Three.js глобус) |
@@ -123,7 +123,7 @@
 ### Фаза 2 — Транспорт + Иммунная система ✅
 - БЛОК 04: CLI-скелетонизатор + detect_stack
 - БЛОК 05: MCP-сервер JSON-RPC 2.0
-- БЛОК 07: n8n + Gemini + Ollama fallback + patch_callback
+- БЛОК 07: Gemini + Ollama fallback + patch_callback (полностью in-process)
 
 ### Безопасность ✅
 - AES шифрование токенов в БД
@@ -194,9 +194,6 @@ curl -X POST http://localhost:8000/api/v1/admin/users \
 
 # Admin UI
 open http://localhost:8000/admin
-
-# n8n БЛОК 07
-./scripts/deploy.sh n8n
 ```
 
 ---

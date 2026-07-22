@@ -49,7 +49,7 @@
   ideal     → R_f+=1, запись, хук-допрос
   adapted   → Тип А/Б через obsidian, запись
   gap_filled → новый символ с нуля, запись
-  fail×3    → n8n → Gemini → Ollama fallback → патч → флагману
+  fail×3    → immune_system → Gemini → Ollama fallback → патч → флагману
          │
          ▼
 [ АРХИВАРИУС (async) ]
@@ -114,7 +114,7 @@
 | `api/routes/step_done.py` | `POST /api/v1/step_done` | Шаг выполнен → следующий |
 | `api/routes/result.py` | `POST /api/v1/result` | YMS-MMM верификация |
 | `api/routes/hook_reply.py` | `POST /api/v1/hook_reply` | Ответ на хук-допрос |
-| `api/routes/patch_callback.py` | `POST /api/v1/patch_callback` | Патч от n8n реаниматора |
+| `api/routes/patch_callback.py` | `POST /api/v1/patch_callback` | Патч от реаниматора (in-process) |
 | `api/routes/mcp.py` | `POST /mcp` | MCP JSON-RPC 2.0 |
 | `api/routes/admin.py` | `/admin/*` | Управление ключами, шардами |
 | `api/routes/tg_webhook.py` | `/tg/webhook` | Ответы Архитектора из Telegram |
@@ -129,7 +129,7 @@
 | `core/archivist.py` | Запись символов → шарды + pgvector | `db/pg_client.py`, `shards/` |
 | `core/sleep_mode.py` | Планировщик СОН + 5 задач | `core/knowledge_collector.py` |
 | `core/knowledge_collector.py` | Канал 1: белые зоны → внешние источники | `core/archivist.py` |
-| `core/immune_system.py` | n8n реаниматор + fallback | `config/ai_router.json` |
+| `core/immune_system.py` | Реаниматор (in-process) + fallback | `config/ai_router.json` |
 | `core/mcp_server.py` | MCP JSON-RPC сервер | `api/routes/mcp.py` |
 | `core/cli_layer.py` | Скелетонизатор + detect_stack | `core/librarian.py` |
 | `core/crypto.py` | AES шифрование токенов в БД | `db/users.py` |
@@ -158,8 +158,7 @@
 | `config/deployment.json` | **Заполнить перед деплоем** — хосты, порты, env-переменные |
 | `config/deployment.json` | Хосты шардов, Redis, PG, порты |
 | `config/notifications.json` | Telegram + admin webhook + protected zones |
-| `n8n/evo_immune_system_workflow.json` | n8n workflow реаниматора |
-| `docker-compose.yml` | Полный стек: PG+pgvector, Redis, API, n8n |
+| `docker-compose.yml` | Полный стек: PG+pgvector, Redis, API |
 
 ---
 
@@ -174,7 +173,7 @@
 | YMS-MMM | `core/verifier.py` | ✅ Готов |
 | Obsidian | `core/obsidian.py` | ✅ Готов |
 | Архивариус | `core/archivist.py` + поля Канала 1 | ✅ Готов |
-| Иммунная система | `core/immune_system.py` + n8n | ✅ Готов |
+| Иммунная система | `core/immune_system.py` (in-process) | ✅ Готов |
 | MCP сервер | `core/mcp_server.py` | ✅ Готов |
 | CLI скелетонизатор | `core/cli_layer.py` | ✅ Готов |
 | Безопасность | `api/middleware/security.py` + `core/crypto.py` | ✅ Готов |
@@ -320,9 +319,9 @@ sleep_mode._sleep_cycle()
 
 Иммунная система (при 3 провалах):
 verifier.fail×3
-  └→ immune_system.activate()
-       └→ n8n webhook → Gemini (primary)
-            └→ fallback: Ollama local
+  └→ immune_system.reanimate() [in-process]
+       └→ ai_router → Gemini (primary)
+            └→ fallback: Gemini Flash → Ollama local
                  └→ /api/v1/patch_callback → флагману
 ```
 

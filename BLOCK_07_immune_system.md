@@ -1,6 +1,10 @@
 # БЛОК 07 — Immune System (Реаниматор)
 
-**Назначение:** Автоматически реанимирует конвейер при 3 провалах верификации подряд. Основной канал — Gemini API. Fallback — локальная модель (Ollama). Реализован как кодовая нода в n8n без визуальных ветвлений.
+**Назначение:** Автоматически реанимирует конвейер при 3 провалах верификации
+подряд. Полностью в коде — единственный процесс FastAPI-приложения, без
+внешних воркфлоу-движков. Основной канал — Gemini API. Fallback — Gemini
+Flash → локальная модель (Ollama), цепочка и retry-политика заданы в
+`config/ai_router.json` и реализованы в `core/ai_router.py`.
 
 [← Вернуться к карте проекта](README.md)
 
@@ -11,8 +15,8 @@
 | Параметр | Значение |
 |----------|----------|
 | **Фаза** | Фаза 2 |
-| **Статус блока** | 🔵 Полностью готов — n8n workflow + TG + patch_callback |
-| **Последний апдейт** | 2026-06-03 |
+| **Статус блока** | 🔵 Полностью готов — целиком in-process Python, ноль внешних сервисов |
+| **Последний апдейт** | 2026-07-22 |
 
 ---
 
@@ -21,108 +25,81 @@
 ### Получает на вход
 | Источник | Что приходит | Формат |
 |----------|-------------|--------|
-| [БЛОК 06](BLOCK_06_ymm_verifier.md) | Webhook: ТЗ + базовые инструкции + ошибочный вывод + лог ошибки | HTTP POST |
+| [БЛОК 06](BLOCK_06_ymm_verifier.md) | ТЗ + базовые инструкции + ошибочный вывод + лог ошибки | прямой вызов `core.immune_system.reanimate()` из `api/routes/result.py` (в фоне, `asyncio.create_task`) |
 
 ### Отдаёт на выход
 | Получатель | Что отдаёт | Формат |
 |-----------|-----------|--------|
-| [БЛОК 01](BLOCK_01_core_engine.md) | Патч-инструкция для флагмана | HTTP POST callback |
+| Флагман | Патч-инструкция (или явный статус отказа) | `POST /api/v1/patch_callback`, подписан `evo_signature` |
 
 ---
 
 ## Зависимости
 
 - [БЛОК 06](BLOCK_06_ymm_verifier.md) — верификатор должен быть готов
-- n8n self-hosted развёрнут
-- Ollama установлен локально (llama3 или аналог)
+- `GEMINI_API_KEY` в `.env`
+- Ollama установлен локально (llama3 или аналог) — опционально, только как
+  последний fallback при недоступности обоих Gemini-эндпоинтов
+
+**Внешних сервисов не требуется.** (Историческая заметка: до аудита
+07.2026 здесь числился отдельный n8n-воркфлоу, который дублировал эту же
+логику снаружи процесса и никогда не был подключён к реальному пути вызова
+— удалён, см. `n8n/MIGRATED_TO_CODE.md`.)
 
 ---
 
 ## Маршрутизация
 
 ```
-Триггер: 3 провала верификации подряд
+Триггер: 3 провала верификации подряд (core/verifier.py)
   │
   ▼
-Попытка 1 → Gemini API
-  │ Отказ / таймаут → пауза 5s
-  ▼
-Попытка 2 → Gemini API
-  │ Отказ / таймаут → пауза 15s
-  ▼
-Попытка 3 → Gemini API
-  │ Отказ / таймаут → пауза 45s (экспоненциальный backoff)
-  ▼
-Fallback → Ollama (локальная модель)
+result.py → asyncio.create_task(core.immune_system.reanimate(...))
   │
   ▼
-Патч → callback в БЛОК 01 → флагман исправляет
+core/ai_router.py::AIRouter._call_with_fallback()
+  │
+  ├─ Попытка 1 → Gemini 2.5 Pro
+  │    Отказ / таймаут → пауза 5s
+  ├─ Попытка 2 → Gemini 2.5 Pro
+  │    Отказ / таймаут → пауза 15s
+  ├─ Попытка 3 → Gemini 2.5 Pro
+  │    Отказ / таймаут → пауза 45s
+  ├─ Fallback → Gemini 2.0 Flash
+  └─ Fallback → Ollama (llama3, локально, 100% автономность)
+  │
+  ▼
+Патч сохранён в Redis (TTL 1ч, ключ evo:patch:{session_id})
+  │
+  ▼
+Флагман опрашивает POST /api/v1/patch_callback → получает один из
+трёх явных статусов:
+  - "reanimated" + patch  — патч готов
+  - "failed"               — все провайдеры исчерпаны (см. ниже)
+  - "pending"               — ещё не готов / TTL истёк / неверный session_id
 ```
 
 ---
 
-## Кодовая нода n8n
+## Реализация (код, не воркфлоу)
 
-```javascript
-const { taskDescription, baseInstructions,
-        faultyOutput, errorLog, callbackUrl } = items[0].json;
-
-const prompt = `[EVO-CORE IMMUNE SYSTEM]
-TASK: ${taskDescription}
-BASE_INSTRUCTIONS: ${baseInstructions}
-FAULTY_OUTPUT: ${faultyOutput}
-ERROR_LOG: ${errorLog}
-Find the exact point of failure. Return a zero-fluff code patch only.`;
-
-const attempts = [
-    { url: 'https://generativelanguage.googleapis.com/v1/...', model: 'gemini-2.5-pro' },
-    { url: 'https://generativelanguage.googleapis.com/v1/...', model: 'gemini-2.5-pro' },
-    { url: 'https://generativelanguage.googleapis.com/v1/...', model: 'gemini-2.5-pro' },
-    { url: 'http://localhost:11434/api/chat', model: 'llama3' }
-];
-const delays = [5000, 15000, 45000, 0];
-
-let patch = null;
-for (let i = 0; i < attempts.length; i++) {
-    try {
-        const res = await this.helpers.request({
-            method: 'POST', url: attempts[i].url,
-            headers: { 'Content-Type': 'application/json' },
-            body: { model: attempts[i].model,
-                    messages: [{ role: 'user', content: prompt }] },
-            json: true, timeout: 30000
-        });
-        patch = res.choices?.[0]?.message?.content || res.message?.content;
-        if (patch) break;
-    } catch (e) {
-        if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
-    }
-}
-
-if (!patch) return [{ json: { success: false, error: 'All attempts failed' } }];
-
-await this.helpers.request({
-    method: 'POST', url: callbackUrl,
-    headers: { 'Content-Type': 'application/json' },
-    body: { status: 'reanimated', patch },
-    json: true
-});
-
-return [{ json: { success: true, status: 'Patch Injected' } }];
-```
+| Файл | Роль |
+|---|---|
+| `core/immune_system.py::reanimate()` | Собирает промпт, вызывает `ai_router.generate(prompt, task="immune_patch")`, сохраняет патч в Redis. При исчерпании всех провайдеров — явный `log.error` + статус `"failed"` в Redis (не тихая потеря в fire-and-forget таске) |
+| `core/immune_system.py::patch_callback()` | Отдаёт патч/статус флагману, три различимых исхода (см. докстринг в файле) |
+| `core/ai_router.py` | Единственная точка вызова AI-провайдеров, fallback-цепочка |
+| `api/routes/result.py` | Триггерит `reanimate()` в фоне при `action == "reanimate"` |
+| `api/routes/patch_callback.py` | HTTP-обвязка над `patch_callback()`, верифицирует/подписывает `evo_signature` (см. `core/signature.py`) |
 
 ---
 
 ## Задачи
 
-### Фаза 2
-- [ ] Развернуть n8n self-hosted
-- [ ] Создать воркфлоу с одной кодовой нодой (код выше)
-- [ ] Установить Ollama + загрузить модель (llama3)
-- [ ] Настроить Gemini API ключ
-- [ ] Тест полного цикла: симуляция 3 провалов → реанимация → патч доходит до флагмана
-- [ ] Интеграция с БЛОК 06 (webhook)
-- [ ] Интеграция с БЛОК 01 (callback)
+### Фаза 2 — закрыто
+- [x] Реаниматор целиком в коде, без внешних сервисов
+- [x] Явный статус отказа при исчерпании AI-провайдеров (не молчаливая потеря)
+- [x] Интеграция с БЛОК 06 (прямой вызов из result.py)
+- [x] Интеграция с БЛОК 01 (`/patch_callback`, HMAC-подпись `evo_signature`)
 
 ---
 
@@ -130,9 +107,10 @@ return [{ json: { success: true, status: 'Patch Injected' } }];
 
 | Блок | Статус сшивки | Что проверено |
 |------|--------------|---------------|
-| [БЛОК 06](BLOCK_06_ymm_verifier.md) YMS-MMM | 🔵 Сшит | 3 провала → immune.reanimate() |
-| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔵 Сшит | /patch_callback → флагману |
+| [БЛОК 06](BLOCK_06_ymm_verifier.md) YMS-MMM | 🔵 Сшит | 3 провала → `immune.reanimate()` |
+| [БЛОК 01](BLOCK_01_core_engine.md) Core Engine | 🔵 Сшит | `/patch_callback` → флагману, подписан `evo_signature` |
 
 ---
 
-*Апдейт: 2026-06-03*
+*Апдейт: 2026-07-22 — аудит: реаниматор задокументирован как он есть в коде
+(n8n убран, статус "failed" сделан явным).*
