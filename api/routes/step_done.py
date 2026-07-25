@@ -49,7 +49,8 @@ async def step_done(req: StepDoneRequest):
     return await sign_response({
         "status": "next_step_ready",
         "step": req.next_step_requested,
-        "symbol_id": next_step["symbol_id"],
+        # symbol_id (сырая нотация Φ^{a}_{s_n}) — внутренний язык ядра,
+        # наружу не идёт. Флагман адресует шаги только числом step.
         "instruction": body.get("content", ""),
         "hyperlinks": body.get("hyperlinks", []),
         "label": body.get("label", "")

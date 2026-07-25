@@ -56,12 +56,16 @@ async def search(query_text: str, plan_steps: list[str],
     # Разворачиваем метаданные в человекочитаемый план
     plan_desc = _build_plan_description(symbols, plan_steps)
 
-    # Картридж: шаги без тел (тела раскрываются по step_done)
+    # Картридж: шаги без тел (тела раскрываются по step_done).
+    # symbol_id (сырая нотация Φ^{a}_{s_n}) сюда НЕ кладём — этот dict
+    # уходит напрямую флагману в ответе /query, а символы/лигатуры —
+    # исключительно внутренний язык ядра, наружу не покидает периметр.
+    # Для внутреннего хранения плана (step_done читает по номеру шага)
+    # используется отдельный plan_for_redis ниже, который наружу не идёт.
     cartridge_steps = {}
     for i, step in enumerate(plan_steps, 1):
         if i - 1 < len(symbols):
             cartridge_steps[f"step_{i}"] = {
-                "symbol_id": symbols[i-1]['id'],
                 "label": symbols[i-1]['label'],
                 "description": f"Шаг {i}: {symbols[i-1]['label']}",
                 "body_loaded": False

@@ -117,6 +117,7 @@ async def _sleep_cycle():
         ("Проверка ёмкости шардов", _check_shard_capacity),
         ("Поиск потенциальных лигатур", _find_ligature_candidates),
         ("Проверка гипотез", _check_hypotheses),
+        ("Проверка целостности", _check_integrity),
         ("Апдейт графа знаний", _update_graph),
         ("Статистика", _generate_stats),
         ("Автонаполнение ядра (Канал 1)", _auto_fill_knowledge),
@@ -281,6 +282,116 @@ async def _actualize_tech_currency():
                  "consequences": "Символы реже попадают в топ выдачи, пока не пройдут проверку"},
                 {"description": "Игнорировать — актуальность не критична для этой группы",
                  "consequences": "Уведомление закрывается, повтор при следующем росте группы"},
+            ]
+        )
+
+
+async def _check_integrity():
+    """
+    Задача — Проверка целостности (SLEEP_MODE.md раздел "Задачи в режиме
+    СОН", пункт 3). Прописана в спецификации с 2026-06-13, до этого фикса
+    не была реализована ни одной строкой кода.
+
+    Три сверки:
+    1. Все активные символы имеют ссылку на ячейку шарда (shard_path не
+       пуст); при SHARD_PROVIDER=local дополнительно проверяется физическое
+       наличие файла — для остальных провайдеров (gdrive/github/r2)
+       проверяется только ссылка в БД, без сетевого похода за каждым файлом
+       (тот же принцип, что у _check_shard_capacity/_defragment_shards).
+    2. Все is_legacy=TRUE символы имеют superseded_by, указывающий на
+       реально существующий (не удалённый) символ.
+    3. Все confirmed_by>=3 символы имеют лигатуру. core/obsidian.py уже
+       содержит рабочую логику создания лигатуры (_check_ligature_candidates),
+       но она триггерится только реактивно на каждый /result, с LIMIT 5 за
+       вызов и молчаливым пропуском кандидатов с len(confirmed_in)<2 —
+       кандидат, не добравший это на момент триггера, мог никогда больше
+       не попасть под повторную проверку. Переиспользуем ту же функцию
+       (идемпотентна — проверяет существование лигатуры перед созданием),
+       не дублируем логику формирования ligature_id здесь.
+    """
+    pool = await get_pool()
+
+    # ── 1. Символы без ссылки на ячейку ─────────────────────────────────
+    async with pool.acquire() as conn:
+        no_shard = await conn.fetch("""
+            SELECT id FROM scl_symbols
+            WHERE is_legacy = FALSE AND (shard_path IS NULL OR shard_path = '')
+            LIMIT 50
+        """)
+    if no_shard:
+        log.warning(
+            f"[Sleep] Целостность: {len(no_shard)} активных символов без "
+            f"shard_path — {[r['id'] for r in no_shard[:5]]}..."
+        )
+
+    missing_files = []
+    from shards.shard_client import _provider
+    if await _provider() == "local":
+        import os
+        async with pool.acquire() as conn:
+            with_shard = await conn.fetch("""
+                SELECT id, shard_path FROM scl_symbols
+                WHERE is_legacy = FALSE AND shard_path IS NOT NULL AND shard_path != ''
+                LIMIT 500
+            """)
+        for row in with_shard:
+            if not os.path.isfile(f"/tmp/evo_shards{row['shard_path']}"):
+                missing_files.append(row['id'])
+        if missing_files:
+            log.warning(
+                f"[Sleep] Целостность: {len(missing_files)} символов ссылаются "
+                f"на несуществующий файл шарда — {missing_files[:5]}..."
+            )
+
+    # ── 2. is_legacy без корректного superseded_by ──────────────────────
+    async with pool.acquire() as conn:
+        broken_legacy = await conn.fetch("""
+            SELECT l.id, l.superseded_by FROM scl_symbols l
+            WHERE l.is_legacy = TRUE
+              AND (l.superseded_by IS NULL
+                   OR NOT EXISTS (SELECT 1 FROM scl_symbols s WHERE s.id = l.superseded_by))
+            LIMIT 50
+        """)
+    if broken_legacy:
+        log.warning(
+            f"[Sleep] Целостность: {len(broken_legacy)} is_legacy-символов без "
+            f"корректного superseded_by — {[r['id'] for r in broken_legacy[:5]]}..."
+        )
+
+    # ── 3. confirmed_by>=3 без лигатуры — переиспользуем obsidian.py ────
+    from core.obsidian import _check_ligature_candidates
+    async with pool.acquire() as conn:
+        pending_ligature_count = await conn.fetchval("""
+            SELECT COUNT(*) FROM scl_symbols
+            WHERE confirmed_by >= 3 AND id NOT LIKE '%⊕%' AND is_legacy = FALSE
+        """)
+    if pending_ligature_count:
+        log.info(
+            f"[Sleep] Целостность: {pending_ligature_count} символов с "
+            f"confirmed_by>=3 без лигатуры — запускаем "
+            f"obsidian._check_ligature_candidates (идемпотентно, LIMIT 5/вызов, "
+            f"остаток доберётся в следующих циклах СОН)"
+        )
+        await _check_ligature_candidates({})
+
+    total_issues = len(no_shard) + len(missing_files) + len(broken_legacy)
+    if total_issues == 0 and not pending_ligature_count:
+        log.info("[Sleep] Целостность: нарушений не найдено")
+    elif total_issues >= 10:
+        await notify_architect(
+            zone="integrity",
+            problem=(
+                f"Проверка целостности: {len(no_shard)} без shard_path, "
+                f"{len(missing_files)} с несуществующим файлом, "
+                f"{len(broken_legacy)} is_legacy без корректного superseded_by"
+            ),
+            options=[
+                {"description": "Пометить проблемные символы is_legacy (карантин)",
+                 "consequences": "Перестают попадать в выдачу до ручного разбора"},
+                {"description": "Оставить как есть, только логировать",
+                 "consequences": "Продолжат участвовать в поиске несмотря на несостыковку"},
+                {"description": "Игнорировать это уведомление",
+                 "consequences": "Повтор при следующем росте количества нарушений"},
             ]
         )
 
