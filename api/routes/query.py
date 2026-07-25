@@ -7,6 +7,11 @@ from core.signature import verify_request, sign_response
 
 router = APIRouter()
 
+# Порог "устарело" для last_tech_check — общий с core/sleep_mode.py
+# (задача _actualize_tech_currency использует то же значение, чтобы
+# реактивная проверка в query.py и проактивная в Режиме СОН не расходились).
+TECH_CHECK_STALE_DAYS = 30
+
 class QueryRequest(BaseModel):
     session_id: str
     user_request: str
@@ -45,14 +50,20 @@ async def query(req: QueryRequest):
     # решений, но и для СТАРЫХ переиспользуемых картриджей. Без этого
     # символ мог бы использоваться годами без единой проверки на устаревание,
     # хотя правило "хук-допрос обязателен" (БЛОК 5 п.12) формально не нарушается.
-    TECH_CHECK_STALE_DAYS = 30
     tech_check_required = False
     days_since_verified = None
     if result.get("symbols"):
         from datetime import datetime, timezone
         top = result["symbols"][0]
         last_check = top.get("last_tech_check")
-        if last_check:
+        if last_check is None:
+            # fix: last_tech_check IS NULL раньше давало tech_check_required=False
+            # ("нечего сравнивать — пропускаем") — перевёрнутая логика.
+            # Отсутствие даты проверки — самый сильный повод проверить, не
+            # пропуск: символ мог прийти из Канала 1 (auto_collected) или
+            # быть только что создан (Тип Б) и НИ РАЗУ не пройти хук-допрос.
+            tech_check_required = True
+        else:
             if last_check.tzinfo is None:
                 last_check = last_check.replace(tzinfo=timezone.utc)
             days_since_verified = (datetime.now(timezone.utc) - last_check).days

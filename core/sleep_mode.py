@@ -113,6 +113,7 @@ async def _sleep_cycle():
     # наоборот — не заметить свежепрочищенный пробел в этом же цикле.
     tasks = [
         ("Очистка устаревших знаний", _prune_outdated_knowledge),
+        ("Актуализация давности проверки (last_tech_check)", _actualize_tech_currency),
         ("Проверка ёмкости шардов", _check_shard_capacity),
         ("Поиск потенциальных лигатур", _find_ligature_candidates),
         ("Проверка гипотез", _check_hypotheses),
@@ -196,6 +197,92 @@ async def _prune_outdated_knowledge():
         log.info(f"[Sleep] Очистка устаревших знаний: {pruned} символов помечены is_legacy")
     else:
         log.info("[Sleep] Очистка устаревших знаний: нечего чистить")
+
+
+async def _actualize_tech_currency():
+    """
+    Задача 1 цикла СОН (сразу после очистки) — проактивная актуализация
+    давности проверки (last_tech_check).
+
+    Реактивная сторона (api/routes/query.py) уже отмечает флагману
+    tech_check_required, если last_tech_check у топового символа NULL или
+    старше TECH_CHECK_STALE_DAYS — но это срабатывает только когда КТО-ТО
+    реально запросит именно этот символ. Символы, которые долго не
+    запрашивались (низкий R_f), могли годами копить устаревание незамеченно.
+    Здесь — тот же порог (TECH_CHECK_STALE_DAYS, единый источник —
+    api/routes/query.py, не дублируем магическое число), но по ВСЕЙ базе,
+    независимо от того, спросит ли их кто-то в ближайшее время.
+
+    Символ мог попасть в базу только двумя путями (два источника
+    пополнения знаний): подтверждённая клиентская сессия (archivist.py
+    Тип А/Б) или автосбор Канала 1 (auto_collected=TRUE, knowledge_collector.py).
+    В обоих случаях NULL last_tech_check означает "ни разу не прошёл ни
+    хук-допрос, ни Тип А актуализацию с момента записи" — задача ниже
+    только ОБНАРУЖИВАЕТ и приоритизирует такие символы (сортировка по
+    R_f — сначала самые используемые, у них цена устаревания выше), а
+    реальную актуализацию (перезапись содержимого) по-прежнему выполняет
+    только подтверждённый цикл verify()→archive() с реальным ИИ на связи —
+    Sleep Mode не имитирует эту проверку сама, чтобы не записать
+    неподтверждённую "актуальность" без физической проверки (тот же
+    принцип, что и в YMS-MMM: без workability_confirmed ничего не пишется).
+    """
+    from api.routes.query import TECH_CHECK_STALE_DAYS
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        never_checked = await conn.fetch("""
+            SELECT id, science, rating_frequency, auto_collected
+            FROM scl_symbols
+            WHERE is_legacy = FALSE AND last_tech_check IS NULL
+            ORDER BY rating_frequency DESC
+            LIMIT 50
+        """)
+        stale = await conn.fetch("""
+            SELECT id, science, rating_frequency, auto_collected, last_tech_check
+            FROM scl_symbols
+            WHERE is_legacy = FALSE
+              AND last_tech_check IS NOT NULL
+              AND last_tech_check < NOW() - INTERVAL '1 day' * $1
+            ORDER BY rating_frequency DESC
+            LIMIT 50
+        """, TECH_CHECK_STALE_DAYS)
+
+    total = len(never_checked) + len(stale)
+    if not total:
+        log.info("[Sleep] Актуализация last_tech_check: всё актуально")
+        return
+
+    log.info(
+        f"[Sleep] Актуализация last_tech_check: {len(never_checked)} никогда "
+        f"не проверялись, {len(stale)} устарели (>{TECH_CHECK_STALE_DAYS}д). "
+        f"Топ по R_f: {[c['id'] for c in (never_checked + stale)[:5]]}"
+    )
+
+    # Системная проблема (много неактуальных высокорейтинговых символов) —
+    # решение по объёму актуализации остаётся за Архитектором, не за ядром
+    # автоматически (тот же паттерн, что и notify_architect в остальных
+    # задачах СОН — ядро не переписывает защищённую зону scl_symbols
+    # по собственной инициативе без подтверждения).
+    high_value_stale = [
+        c for c in (never_checked + stale) if c['rating_frequency'] >= 5
+    ]
+    if len(high_value_stale) >= 10:
+        await notify_architect(
+            zone="tech_currency",
+            problem=(
+                f"{len(high_value_stale)} часто используемых символов "
+                f"(R_f>=5) не проходили проверку актуальности "
+                f">{TECH_CHECK_STALE_DAYS} дней или никогда"
+            ),
+            options=[
+                {"description": "Запланировать хук-допрос по этим символам в приоритете",
+                 "consequences": "Следующие сессии, использующие эти символы, получат tech_check_required=True первыми"},
+                {"description": "Понизить рейтинг без проверки (мягкая деприоритизация)",
+                 "consequences": "Символы реже попадают в топ выдачи, пока не пройдут проверку"},
+                {"description": "Игнорировать — актуальность не критична для этой группы",
+                 "consequences": "Уведомление закрывается, повтор при следующем росте группы"},
+            ]
+        )
 
 
 async def _check_shard_capacity():

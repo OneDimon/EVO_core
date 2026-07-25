@@ -141,6 +141,15 @@ async def update_symbol_type_a(symbol_id: str, new_shard_path: str,
     в разных snapshot при высокой нагрузке — конкурентный UPDATE мог молча
     применить 0 строк без какой-либо ошибки или предупреждения.
     Возвращает True если обновление реально применилось.
+
+    last_tech_check = NOW(): Тип А — это перезапись ТОЙ ЖЕ ячейки того же
+    символа после того, как подключённый ИИ подтвердил решение рабочим на
+    актуальном стеке (см. verify() → action="record_confirmation"/
+    "analyze_delta" → archive() → _type_a()). Это и есть проверка
+    актуальности по факту — до этого фикса last_tech_check не обновлялся
+    здесь, и query.py считал "days_since_verified" от старой даты сразу
+    после свежей перезаписи, требуя от следующего флагмана лишний
+    хук-допрос на то, что только что подтвердили.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -150,7 +159,7 @@ async def update_symbol_type_a(symbol_id: str, new_shard_path: str,
               evolution_note = $3,
               legacy_symbols = array_append(legacy_symbols, $4),
               rating_frequency = rating_frequency + 1,
-              version_ts = NOW(), last_updated = NOW()
+              version_ts = NOW(), last_updated = NOW(), last_tech_check = NOW()
             WHERE id = $1 AND version_ts = (SELECT version_ts FROM scl_symbols WHERE id = $1)
         """, symbol_id, new_shard_path, evolution_note, old_symbol_id)
 

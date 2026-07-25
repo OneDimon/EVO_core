@@ -4,7 +4,10 @@
 """
 import logging
 from db.pg_client import find_symbols, get_symbol, increment_rating
-from db.redis_client import cache_symbol, get_cached_symbol
+from db.redis_client import (
+    cache_symbol, get_cached_symbol,
+    cache_embedding, get_cached_embedding,
+)
 from shards.shard_client import read_cell, read_cell_local
 from core.ai_router import ai_router
 
@@ -17,8 +20,16 @@ async def search(query_text: str, plan_steps: list[str],
     Главный поиск: текст + план + стек → набор символов.
     Возвращает: {scenario, symbols, plan_description, cartridge_steps}
     """
-    # Векторизация запроса — делает локальная модель ядра
-    query_vector = await ai_router.embed(query_text + " " + " ".join(plan_steps))
+    # Векторизация запроса — делает локальная модель ядра.
+    # Глобальный кэш по точному совпадению текста (не по сессии) — пропускает
+    # платный вызов ai_router.embed(), если точно такой же запрос уже
+    # векторизовался (любой сессией, любым пользователем). Сам поиск по
+    # scl_symbols всё равно выполняется заново — устаревших ответов не даёт.
+    embed_key = query_text + " " + " ".join(plan_steps)
+    query_vector = await get_cached_embedding(embed_key)
+    if query_vector is None:
+        query_vector = await ai_router.embed(embed_key)
+        await cache_embedding(embed_key, query_vector)
 
     # Поиск в pgvector
     symbols = await find_symbols(query_vector, top_k=top_k,

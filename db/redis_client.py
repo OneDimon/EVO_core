@@ -10,6 +10,38 @@ async def get_redis():
         _redis = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     return _redis
 
+EMBED_CACHE_TTL = 7 * 86400  # 7 дней — эмбеддинг детерминирован для одного
+                              # текста на одной модели, не протухает по
+                              # смыслу; TTL здесь только на случай смены
+                              # модели эмбеддинга без явной инвалидации кэша
+
+
+async def get_cached_embedding(normalized_text: str) -> list | None:
+    """
+    Глобальный (НЕ по сессии, в отличие от cache_symbol/cache_session_plan
+    ниже) кэш векторов эмбеддинга по точному совпадению текста.
+
+    Цель — не ускорить поиск в БД (HNSW и так быстрый), а пропустить сам
+    оплачиваемый вызов ai_router.embed() для буквально повторяющихся
+    запросов от РАЗНЫХ сессий/пользователей. Ответ по-прежнему ищется
+    заново в scl_symbols при каждом обращении (find_symbols выполняется
+    всегда) — устаревших результатов быть не может, кэшируется только
+    сам вектор, не итоговая выдача.
+    """
+    import hashlib
+    r = await get_redis()
+    key = f"evo:embed_cache:{hashlib.sha256(normalized_text.encode()).hexdigest()}"
+    raw = await r.get(key)
+    return json.loads(raw) if raw else None
+
+
+async def cache_embedding(normalized_text: str, vector: list):
+    import hashlib
+    r = await get_redis()
+    key = f"evo:embed_cache:{hashlib.sha256(normalized_text.encode()).hexdigest()}"
+    await r.setex(key, EMBED_CACHE_TTL, json.dumps(vector))
+
+
 async def cache_symbol(session_id: str, symbol_id: str, data: dict, ttl: int = 3600):
     r = await get_redis()
     # fix: data приходит из find_symbols() — dict(asyncpg.Record), содержит
