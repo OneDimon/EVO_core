@@ -51,7 +51,9 @@ async def step_done(req: StepDoneRequest):
         "step": req.next_step_requested,
         # symbol_id (сырая нотация Φ^{a}_{s_n}) — внутренний язык ядра,
         # наружу не идёт. Флагман адресует шаги только числом step.
+        # Гиперлинки [[EVO:...]] внутри content уже развёрнуты в реальный
+        # текст сервером (core/librarian.py::_resolve_hyperlinks) — instruction
+        # самодостаточна, отдельного поля hyperlinks для флагмана не нужно.
         "instruction": body.get("content", ""),
-        "hyperlinks": body.get("hyperlinks", []),
         "label": body.get("label", "")
     }, req.session_id)

@@ -35,15 +35,17 @@ async def query(req: QueryRequest):
 
     scenario = result["scenario"]
 
-    # Сохранить план в Redis — step_done читает отсюда
-    if result.get("symbols"):
+    # Сохранить план в Redis — step_done читает отсюда.
+    # plan_for_redis уже собран правильно внутри search() (лигатура = 1 шаг,
+    # либо независимо найденные по каждому шагу символы с верными номерами)
+    # — раньше здесь этот список пересобирался заново позиционным зипом
+    # result["symbols"][:len(flagship_plan)], тем же способом, который был
+    # неточен в librarian.py и там же исправлен; дублировать это исправление
+    # в двух местах не стали — единый источник теперь search().
+    if result.get("plan_for_redis"):
         from db.redis_client import cache_session_plan
-        plan_data = [
-            {"symbol_id": s['id'], "label": s['label'], "step": i+1}
-            for i, s in enumerate(result["symbols"][:len(req.flagship_plan)])
-        ]
         import asyncio
-        asyncio.create_task(cache_session_plan(req.session_id, plan_data))
+        asyncio.create_task(cache_session_plan(req.session_id, result["plan_for_redis"]))
 
     # Сигнал давности знания — обязывает флагмана к проверке актуальности
     # (ШАГ 7 хук-допрос в FLAGSHIP_SYSTEM_PROMPT.md) не только для новых
@@ -69,6 +71,21 @@ async def query(req: QueryRequest):
             days_since_verified = (datetime.now(timezone.utc) - last_check).days
             tech_check_required = days_since_verified >= TECH_CHECK_STALE_DAYS
 
+    # Сборка "по частям" (не цельная подтверждённая лигатура) не несёт
+    # знания о взаимном влиянии шагов — символ для шага N подтверждён сам
+    # по себе, но не в связке с шагом N+1 (см. LOCAL_MODEL_INSTRUCTIONS.md,
+    # пример: установка VPN обрывает SSH-сессию, от которой зависят более
+    # поздние шаги). Явно перекладываем эту проверку на флагмана, а не
+    # молчим об этом.
+    order_check_note = (
+        " Шаги собраны из независимых частных решений — самостоятельно "
+        "проверь, не нарушает ли выполнение одного шага условия, "
+        "необходимые для следующих (открытые соединения, порты, "
+        "запущенные процессы), прежде чем исполнять план целиком."
+        if result.get("assembly_mode") == "per_step" and len(result.get("symbols", [])) > 1
+        else ""
+    )
+
     if scenario == "full":
         return await sign_response({
             "status": "cartridge_ready",
@@ -78,6 +95,7 @@ async def query(req: QueryRequest):
             "rating": result["symbols"][0].get("rating_frequency", 0) if result["symbols"] else 0,
             "tech_check_required": tech_check_required,
             "days_since_verified": days_since_verified,
+            **({"note": order_check_note.strip()} if order_check_note else {}),
         }, req.session_id)
     elif scenario == "partial":
         return await sign_response({
@@ -87,7 +105,7 @@ async def query(req: QueryRequest):
             "partial_instructions": result["cartridge_steps"],
             "directive": (
                 "Смежный базис выдан. Адаптируй под свои вводные. "
-                "Протестируй в песочнице. Отчитайся."
+                "Протестируй в песочнице. Отчитайся." + order_check_note
             ),
             "tech_check_required": tech_check_required,
             "days_since_verified": days_since_verified,
