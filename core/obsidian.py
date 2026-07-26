@@ -34,12 +34,12 @@ async def _run(verify_result: VerificationResult, session_id: str,
         action = verify_result.action
 
         if action == "record_confirmation":
-            await _confirm_existing(cartridge, applied_stack)
+            await _confirm_existing(session_id, applied_stack)
 
         elif action == "analyze_delta":
             await _archive_delta(
-                verify_result.delta_type, output, original_tz,
-                applied_stack, cartridge, deviations
+                session_id, verify_result.delta_type, output, original_tz,
+                applied_stack, deviations
             )
 
         elif action == "record_new_knowledge":
@@ -60,41 +60,57 @@ async def _run(verify_result: VerificationResult, session_id: str,
         log.error(f"[Obsidian] Error: {e}")
 
 
-async def _confirm_existing(cartridge: dict, applied_stack: list[str]):
-    """Тип ideal: R_f +1, обновить applicable_stacks."""
+async def _confirm_existing(session_id: str, applied_stack: list[str]):
+    """
+    Тип ideal: R_f +1, обновить applicable_stacks.
+
+    Раньше символы брались из cartridge['instructions'], которое эхом
+    возвращал флагман в /result — но symbol_id больше не уходит флагману
+    (внутренняя нотация не покидает ядро, см. api/routes/query.py), поэтому
+    эхо больше не содержит этих id. Источник истины — серверный план сессии
+    в Redis (тот же, что читает /step_done), а не то, что прислал клиент:
+    так надёжнее и в принципе правильнее — внутренний учёт не должен
+    зависеть от данных, эхом присланных внешней стороной.
+    """
     from db.pg_client import increment_rating
+    from db.redis_client import get_session_plan
+    plan = await get_session_plan(session_id) or []
     pool = await get_pool()
-    steps = cartridge.get("instructions", {})
     async with pool.acquire() as conn:
-        for step_data in steps.values():
-            if isinstance(step_data, dict):
-                sid = step_data.get("symbol_id")
-                if sid:
-                    await increment_rating(sid)
-                    # Добавить новые стеки
-                    for s in applied_stack:
-                        await conn.execute("""
-                            UPDATE scl_symbols
-                            SET applicable_stacks =
-                                CASE WHEN $2 = ANY(applicable_stacks)
-                                     THEN applicable_stacks
-                                     ELSE array_append(applicable_stacks, $2) END,
-                                last_updated = NOW()
-                            WHERE id = $1
-                        """, sid, s)
-    log.info(f"[Obsidian] Confirmed {len(steps)} symbols, stacks: {applied_stack}")
+        for step_data in plan:
+            sid = step_data.get("symbol_id")
+            if sid:
+                await increment_rating(sid)
+                # Добавить новые стеки
+                for s in applied_stack:
+                    await conn.execute("""
+                        UPDATE scl_symbols
+                        SET applicable_stacks =
+                            CASE WHEN $2 = ANY(applicable_stacks)
+                                 THEN applicable_stacks
+                                 ELSE array_append(applicable_stacks, $2) END,
+                            last_updated = NOW()
+                        WHERE id = $1
+                    """, sid, s)
+    log.info(f"[Obsidian] Confirmed {len(plan)} symbols, stacks: {applied_stack}")
 
 
-async def _archive_delta(delta_type: str, output: str, original_tz: str,
-                          applied_stack: list[str], cartridge: dict, deviations: str):
-    """Тип adapted: определить А или Б и заархивировать."""
-    steps = cartridge.get("instructions", {})
-    if not steps:
+async def _archive_delta(session_id: str, delta_type: str, output: str, original_tz: str,
+                          applied_stack: list[str], deviations: str):
+    """
+    Тип adapted: определить А или Б и заархивировать.
+
+    Родительский символ — первый шаг из серверного плана сессии (Redis),
+    не из эха флагмана (см. _confirm_existing выше — та же причина: эхо
+    больше не содержит symbol_id).
+    """
+    from db.redis_client import get_session_plan
+    plan = await get_session_plan(session_id) or []
+    if not plan:
         return
 
-    # Берём первый символ из картриджа как родительский
-    first_step = next(iter(steps.values()), {})
-    parent_id = first_step.get("symbol_id") if isinstance(first_step, dict) else None
+    # Берём первый символ из плана как родительский
+    parent_id = plan[0].get("symbol_id")
 
     pool = await get_pool()
     if parent_id:
