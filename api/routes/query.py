@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from core.librarian import search
+from core.librarian import search, resolve_full_cartridge
 from core.signature import verify_request, sign_response
 
 router = APIRouter()
@@ -17,6 +17,12 @@ class QueryRequest(BaseModel):
     user_request: str
     flagship_plan: list[str] = []
     context: Optional[dict] = None
+    # "stepwise" (по умолчанию) — инструкции раскрываются по одной через
+    # /step_done, пользователь видит прогресс по шагам. "auto" — ядро сразу
+    # отдаёт полностью развёрнутый план (все шаги с готовым instruction),
+    # без последующих обращений к /step_done — для случаев, когда
+    # пользователь доверяет полный прогон без пошагового контроля.
+    execution_mode: str = "stepwise"
     evo_signature: Optional[str] = None
 
 @router.post("/query")
@@ -46,6 +52,14 @@ async def query(req: QueryRequest):
         from db.redis_client import cache_session_plan
         import asyncio
         asyncio.create_task(cache_session_plan(req.session_id, result["plan_for_redis"]))
+
+    # execution_mode="auto" — раскрыть содержимое всех шагов сразу
+    # (синхронно, не fire-and-forget: развёрнутый текст уходит прямо в этот
+    # ответ, а не через последующие /step_done).
+    if req.execution_mode == "auto" and result.get("plan_for_redis"):
+        result["cartridge_steps"] = await resolve_full_cartridge(
+            result["cartridge_steps"], result["plan_for_redis"], req.session_id
+        )
 
     # Сигнал давности знания — обязывает флагмана к проверке актуальности
     # (ШАГ 7 хук-допрос в FLAGSHIP_SYSTEM_PROMPT.md) не только для новых

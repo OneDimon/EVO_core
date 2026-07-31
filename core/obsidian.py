@@ -50,6 +50,19 @@ async def _run(verify_result: VerificationResult, session_id: str,
                 context={}
             )
 
+        # Фаза 2 утверждения лигатуры-кандидата (core/librarian.py::
+        # _record_candidate_ligature, Сценарий Б): если эта сессия
+        # пользовалась ещё не подтверждённой сборкой по частям — теперь,
+        # когда мы дошли сюда по любой из трёх веток выше, вся цепочка
+        # подтверждена работоспособной (result.py вызывает process() только
+        # после workability_confirmed=True и полного YMS-MMM) — утверждаем
+        # кандидата: становится видимым для всех сессий (is_universal=TRUE).
+        from db.redis_client import get_and_clear_candidate_ligature
+        from db.pg_client import promote_candidate_ligature
+        candidate_id = await get_and_clear_candidate_ligature(session_id)
+        if candidate_id:
+            await promote_candidate_ligature(candidate_id)
+
         # Проверка кандидатов на лигатуру
         await _check_ligature_candidates(cartridge)
 

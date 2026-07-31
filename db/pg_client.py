@@ -82,6 +82,30 @@ async def find_symbols(query_vector: list[float], top_k: int = 5,
         """, *params)
         return [dict(r) for r in rows]
 
+async def promote_candidate_ligature(ligature_id: str) -> bool:
+    """
+    Фаза 2 утверждения лигатуры-кандидата (Сценарий Б, core/librarian.py).
+    Кандидат записывается сразу как is_universal=FALSE, confirmed_by=0 —
+    невидим для чужих сессий (правило Архитектора: в общую выдачу идут
+    только is_universal=TRUE). Утверждается — становится доступным для
+    поиска всеми — только здесь, только после реального подтверждения
+    работоспособности всей цепочки (см. core/archivist.py::archive()).
+    Идемпотентно: WHERE is_universal=FALSE — повторный вызов на уже
+    утверждённой лигатуре не делает ничего.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("""
+            UPDATE scl_symbols
+            SET is_universal = TRUE, confirmed_by = 1, last_updated = NOW()
+            WHERE id = $1 AND is_universal = FALSE
+        """, ligature_id)
+    applied = result.split()[-1] != "0"
+    if applied:
+        log.info(f"[Ligature] Утверждён кандидат: {ligature_id}")
+    return applied
+
+
 async def get_symbol(symbol_id: str) -> Optional[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:

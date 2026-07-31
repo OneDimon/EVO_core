@@ -69,6 +69,28 @@ async def get_session_plan(session_id: str) -> list | None:
     raw = await r.get(f"evo:session:{session_id}:plan")
     return json.loads(raw) if raw else None
 
+async def cache_candidate_ligature(session_id: str, ligature_id: str, ttl: int = 3600):
+    """
+    Сессия воспользовалась кандидатом на лигатуру (Сценарий Б — сборка по
+    частям, ещё не подтверждена). Хранится, чтобы archivist.py::archive()
+    смог утвердить именно её после подтверждения работоспособности —
+    двухфазно: записан как кандидат сразу, утверждён (is_universal=TRUE)
+    только после реального подтверждения, не раньше.
+    """
+    r = await get_redis()
+    await r.setex(f"evo:session:{session_id}:candidate_ligature", ttl, ligature_id)
+
+async def get_and_clear_candidate_ligature(session_id: str) -> str | None:
+    """get+delete — утверждение кандидата происходит не более одного раза
+    за сессию, даже если /result вызовут повторно."""
+    r = await get_redis()
+    key = f"evo:session:{session_id}:candidate_ligature"
+    ligature_id = await r.get(key)
+    if ligature_id:
+        await r.delete(key)
+        return ligature_id.decode() if isinstance(ligature_id, bytes) else ligature_id
+    return None
+
 async def flush_session(session_id: str):
     """Схлопывание сессии — физическое удаление из Redis."""
     r = await get_redis()

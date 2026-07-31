@@ -139,6 +139,23 @@ async def search(query_text: str, plan_steps: list[str],
             "body_loaded": False
         }
 
+    # ── Кандидат на лигатуру (Фаза 1 из 2) ──────────────────────────────
+    # Собранная по частям последовательность целиком (все шаги нашли
+    # символ, сценарий не gap) — потенциальная будущая лигатура. Пишем
+    # СРАЗУ, но невидимой для чужих сессий (is_universal=FALSE,
+    # confirmed_by=0): в общую выдачу попадает только после того как
+    # core/archivist.py::archive() подтвердит, что вся цепочка реально
+    # сработала (workability_confirmed=True, YMS-MMM пройден). Метаданные
+    # хранят рекомендуемый порядок (hyperlinks = symbol_id по шагам,
+    # упорядоченные) и отпечаток задачи+стека (context_conditions) — чтобы
+    # в следующий раз по одной лигатуре сразу было понятно, в какие ячейки
+    # каких шардов обращаться, без повторного разбора контекста заново.
+    if scenario != "gap" and len(symbols) == len(plan_steps) and len(symbols) > 1:
+        try:
+            await _record_candidate_ligature(symbols, stack, query_text, session_id)
+        except Exception as e:
+            log.warning(f"[Librarian] Не удалось записать кандидата на лигатуру: {e}")
+
     return {
         "scenario": scenario,
         "symbols": symbols,
@@ -147,6 +164,51 @@ async def search(query_text: str, plan_steps: list[str],
         "plan_for_redis": plan_for_redis,
         "assembly_mode": "per_step",
     }
+
+
+async def _record_candidate_ligature(symbols: list[dict], stack: list[str],
+                                      query_text: str, session_id: str):
+    """
+    Фаза 1: запись кандидата на последовательную (не доменно-слитную,
+    в отличие от core/obsidian.py::_check_ligature_candidates) лигатуру.
+
+    id детерминирован от точной упорядоченной последовательности
+    составляющих символов + стека — повторная сборка того же самого
+    набора идемпотентно попадает в тот же id (ON CONFLICT DO NOTHING
+    в insert_symbol), не плодит дубли-кандидаты на каждый запрос.
+    """
+    import hashlib
+    from core.archivist import _get_root_code
+    from db.pg_client import insert_symbol
+    from db.redis_client import cache_candidate_ligature
+
+    roots_seq = "⊕".join(_get_root_code(s.get('science', '')) for s in symbols)
+    fingerprint_src = "|".join(s['id'] for s in symbols) + "|" + ",".join(sorted(stack or []))
+    fp = hashlib.sha256(fingerprint_src.encode()).hexdigest()[:8]
+    ligature_id = f"[{roots_seq}]^{{seq}}_{{{fp}}}"
+
+    first = symbols[0]
+    ordered_ids = [s['id'] for s in symbols]  # порядок = порядок шагов, НЕ сортировать
+
+    await insert_symbol({
+        "id": ligature_id,
+        "label": f"методичка (кандидат): {query_text[:60]}",
+        "vector": first.get('vector', []),
+        "science": roots_seq,
+        "section": first.get('section', ''),
+        "subsection": first.get('subsection', ''),
+        "confirmed_by": 0,               # не подтверждено — фаза 1
+        "is_universal": False,           # невидимо для чужих сессий — фаза 1
+        "context_conditions": (
+            f"задача: {query_text[:200]} | стек: {','.join(stack or [])}"
+        ),
+        "applicable_stacks": list(stack or []),
+        "hyperlinks": ordered_ids,        # рекомендуемая последовательность
+        "shard_host": "",
+        "shard_path": f"/evo/LIGATURE/{ligature_id}.zst",
+        "rating_frequency": 0,
+    })
+    await cache_candidate_ligature(session_id, ligature_id)
 
 
 async def _resolve_hyperlinks(content: str, depth: int = 0, visited: set = None) -> str:
@@ -210,6 +272,30 @@ async def _resolve_hyperlinks(content: str, depth: int = 0, visited: set = None)
         pattern = re.escape(f"[[EVO:{sub_id}") + r'(?:\s*\|\s*[^\]]*)?\]\]'
         resolved = re.sub(pattern, lambda m, r=replacement: r, resolved, count=1)
 
+    return resolved
+
+
+async def resolve_full_cartridge(cartridge_steps: dict, plan_for_redis: list[dict],
+                                  session_id: str) -> dict:
+    """
+    Режим "полный автомат" (execution_mode="auto" в /query, см. api/routes/
+    query.py): раскрывает содержимое ВСЕХ шагов сразу, вместо ленивой
+    выдачи по одному через /step_done. Переиспользует load_step_body —
+    тот же путь разворачивания гиперлинков (_resolve_hyperlinks), та же
+    инкрементация рейтинга при обращении. Возвращает cartridge_steps с
+    заполненным "instruction" и body_loaded=True на каждом шаге.
+    """
+    resolved = dict(cartridge_steps)
+    for entry in plan_for_redis:
+        step_key = f"step_{entry['step']}"
+        if step_key not in resolved:
+            continue
+        body = await load_step_body(session_id, entry["symbol_id"])
+        resolved[step_key] = {
+            **resolved[step_key],
+            "instruction": body.get("content", ""),
+            "body_loaded": True,
+        }
     return resolved
 
 
