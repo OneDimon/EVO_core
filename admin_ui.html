@@ -39,6 +39,13 @@ button.secondary { background: transparent; color: #00FF9C; border: 1px solid #0
 .msg { padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-top: 8px; }
 .msg-ok { background: rgba(0,255,156,0.1); color: #00FF9C; border: 1px solid rgba(0,255,156,0.3); }
 .msg-err { background: rgba(255,68,68,0.1); color: #FF4444; border: 1px solid rgba(255,68,68,0.3); }
+.tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid #2a2a2d; }
+.tab { padding: 10px 18px; font-size: 13px; color: #888; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab.active { color: #00FF9C; border-bottom-color: #00FF9C; }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.data-table th { text-align: left; color: #888; font-weight: 600; text-transform: uppercase; font-size: 11px; padding: 8px; border-bottom: 1px solid #2a2a2d; }
+table.data-table td { padding: 8px; border-bottom: 1px solid #1a1a1c; font-family: 'JetBrains Mono', monospace; }
+table.data-table tr:hover { background: #1a1a1c; }
 </style>
 </head>
 <body>
@@ -356,10 +363,114 @@ function UsersStatsCard({ token }) {
   );
 }
 
+function LiveTestPanel({ token }) {
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    const r = await apiFetch('/api/v1/admin/live-test', { method: 'POST' }, token);
+    setResult(r);
+    setLoading(false);
+  };
+
+  return (
+    <div className="card" style={{gridColumn: 'span 2'}}>
+      <h3>Живой прогон — реальные проверки узлов ядра</h3>
+      <button onClick={run} disabled={loading}>{loading ? 'Прогоняю...' : 'Запустить живой прогон'}</button>
+      {result && (
+        <>
+          <div className={`msg msg-${result.all_passed ? 'ok' : 'err'}`} style={{marginTop: 12}}>
+            {result.summary}
+          </div>
+          <div style={{marginTop: 12}}>
+            {result.checks.map((c, i) => (
+              <div className="stat" key={i}>
+                <span className="stat-label">{c.check}</span>
+                <div style={{display: 'flex', gap: 10, alignItems: 'center'}}>
+                  <span className="stat-value" style={{color: '#555'}}>{c.latency_ms}ms</span>
+                  <span className={c.status === 'ok' ? 'tag tag-ok' : 'tag'} style={c.status !== 'ok' ? {background: 'rgba(255,68,68,0.15)', color: '#FF4444'} : {}}>
+                    {c.status === 'ok' ? '✓ ' + c.detail : '✗ ' + c.detail}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ErrorFeed({ token }) {
+  const [errors, setErrors] = useState([]);
+
+  const load = () => apiFetch('/api/v1/admin/errors?limit=50', {}, token)
+    .then(d => setErrors(d.errors || []));
+
+  useEffect(() => { if (token) load(); }, [token]);
+
+  return (
+    <div className="card" style={{gridColumn: 'span 2'}}>
+      <h3>Что и где упало — последние ошибки</h3>
+      <button className="secondary" onClick={load} style={{marginBottom: 12, padding: '4px 10px', fontSize: 11}}>Обновить</button>
+      <div style={{maxHeight: 320, overflowY: 'auto'}}>
+        {errors.length === 0 && <p style={{color: '#555', fontSize: 12}}>Ошибок нет</p>}
+        {errors.map((e, i) => (
+          <div key={i} className="log-item">
+            <span className="ts">{new Date(e.ts).toLocaleString('ru')}</span>
+            <span className="tag" style={{background: 'rgba(255,68,68,0.15)', color: '#FF4444', marginRight: 8}}>{e.error_type}</span>
+            <span style={{color: '#ccc'}}>{e.endpoint}</span>
+            <span style={{color: '#555', marginLeft: 8}}>{e.user_email} · {e.latency_ms}ms</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UsersMetricsTable({ token }) {
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    if (token) apiFetch('/api/v1/admin/users-metrics?limit=100', {}, token)
+      .then(d => setUsers(d.users || []));
+  }, [token]);
+
+  return (
+    <div className="card" style={{gridColumn: 'span 2'}}>
+      <h3>Пользователи — скорость и токены (30 дней)</h3>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Email</th><th>План</th><th>Запросов</th><th>Ср. латентность</th>
+            <th>Ошибок</th><th>Токенов сэкономлено</th><th>Активность</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.user_id}>
+              <td style={{fontFamily: 'Inter, sans-serif', color: '#F4F4F5'}}>{u.email}</td>
+              <td>{u.plan}</td>
+              <td>{u.requests_30d}</td>
+              <td>{u.avg_latency_ms}ms</td>
+              <td className={u.errors_30d > 0 ? 'stat-err' : ''}>{u.errors_30d}</td>
+              <td className="stat-ok">{u.tokens_saved.toLocaleString()}</td>
+              <td style={{color: u.is_active ? '#00FF9C' : '#555'}}>{u.is_active ? '● активен' : '○ отключён'}</td>
+            </tr>
+          ))}
+          {users.length === 0 && <tr><td colSpan={7} style={{color: '#555'}}>Нет данных</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useAdminToken();
   const [tokenInput, setTokenInput] = useState('');
   const [authed, setAuthed] = useState(false);
+  const [tab, setTab] = useState('overview');
 
   const login = async () => {
     const r = await apiFetch('/api/v1/admin/config', {}, tokenInput);
@@ -398,16 +509,38 @@ function App() {
         </span>
       </div>
       <div className="container">
-        <div className="grid">
-          <StatusCard token={token}/>
-          <LibraryStatsCard token={token}/>
-          <TopSymbolsCard token={token}/>
-          <UsersStatsCard token={token}/>
-          <ShardTestCard token={token}/>
-          <TelegramSetup token={token}/>
-          <ConfigPanel token={token}/>
-          <AuditLog token={token}/>
+        <div className="tabs">
+          {[['overview','Обзор'],['tests','Живые прогоны'],['errors','Ошибки'],['users','Пользователи']].map(([id,label])=>(
+            <div key={id} className={`tab ${tab===id?'active':''}`} onClick={()=>setTab(id)}>{label}</div>
+          ))}
         </div>
+        {tab === 'overview' && (
+          <div className="grid">
+            <StatusCard token={token}/>
+            <LibraryStatsCard token={token}/>
+            <TopSymbolsCard token={token}/>
+            <UsersStatsCard token={token}/>
+            <ShardTestCard token={token}/>
+            <TelegramSetup token={token}/>
+            <ConfigPanel token={token}/>
+            <AuditLog token={token}/>
+          </div>
+        )}
+        {tab === 'tests' && (
+          <div className="grid">
+            <LiveTestPanel token={token}/>
+          </div>
+        )}
+        {tab === 'errors' && (
+          <div className="grid">
+            <ErrorFeed token={token}/>
+          </div>
+        )}
+        {tab === 'users' && (
+          <div className="grid">
+            <UsersMetricsTable token={token}/>
+          </div>
+        )}
       </div>
     </>
   );

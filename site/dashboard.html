@@ -87,6 +87,24 @@ main{padding:48px 0 80px}
 .upsell p{font-size:13.5px;color:var(--text-soft)}
 
 .loading{text-align:center;padding:80px 0;color:var(--text-faint);font-size:14px}
+
+.keyrow{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line-soft)}
+.keyrow:last-child{border-bottom:none}
+.keyrow .kname{font-size:14px;font-weight:600}
+.keyrow .kmeta{font-size:12px;color:var(--text-faint);margin-top:2px}
+.keyrow .kval{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text-soft)}
+.revokebtn{font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer;font-weight:600}
+.newkeyrow{display:flex;gap:8px;margin-top:14px}
+.newkeyrow input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13.5px}
+.newkeybox{background:var(--bg);border:1px solid var(--signal);border-radius:10px;padding:14px;margin-top:12px;display:none}
+.newkeybox .nk-warn{font-size:12.5px;color:var(--warn);margin-top:6px}
+
+.savedstat{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.savedstat .big{font-size:2.2rem;font-weight:800;color:var(--signal);letter-spacing:-.02em}
+.savedstat .pct{font-size:14px;color:var(--text-soft)}
+.minibar-wrap{display:flex;gap:2px;align-items:flex-end;height:48px;margin-top:16px}
+.minibar{flex:1;background:var(--signal);border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
+.minibar:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -160,6 +178,47 @@ main{padding:48px 0 80px}
         <div class="keybox">
           <span id="maskedKey" class="mono">—</span>
           <button class="copybtn" onclick="copyKey()">Скопировать полный</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Экономия токенов — за 30 дней</h2>
+        <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:14px">
+          Реально потрачено ядром (эмбеддинг/классификация) против оценки, сколько
+          потратил бы ваш ИИ, если бы генерировал те же решения сам
+        </p>
+        <div class="savedstat">
+          <span class="big" id="tokensSaved">—</span>
+          <span class="pct" id="tokensSavedPct"></span>
+        </div>
+        <div class="row" style="border-bottom:none;padding-top:10px">
+          <span class="rk">Потрачено ядром / оценка без ядра</span>
+          <span class="rv" id="tokensCompare">—</span>
+        </div>
+        <div class="row" style="border-bottom:none">
+          <span class="rk">Средняя латентность ответа</span>
+          <span class="rv" id="avgLatency">—</span>
+        </div>
+        <div class="minibar-wrap" id="dailyChart"></div>
+      </div>
+
+      <div class="panel">
+        <h2>API-ключи</h2>
+        <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:6px">
+          Можно создать несколько ключей — например, отдельный на каждый инструмент —
+          и отозвать любой без потери доступа к остальным
+        </p>
+        <div id="keysList"></div>
+        <div class="newkeyrow">
+          <input id="newKeyLabel" type="text" placeholder="Название ключа (например, Claude Code)" class="mono"/>
+          <button class="btn btn-signal" onclick="createKey()">Создать ключ</button>
+        </div>
+        <div class="newkeybox" id="newKeyBox">
+          <div class="keybox">
+            <span id="newKeyValue" class="mono">—</span>
+            <button class="copybtn" onclick="copyNewKey()">Скопировать</button>
+          </div>
+          <div class="nk-warn">⚠ Сохраните сейчас — повторно ключ не показывается</div>
         </div>
       </div>
 
@@ -246,6 +305,94 @@ function renderDash(data, apiKey){
   document.getElementById('upsellBlock').style.display = data.plan === 'free' ? 'flex' : 'none';
 
   currentKey = apiKey;
+  loadUsage(apiKey);
+  loadKeys(apiKey);
+}
+
+async function loadUsage(apiKey){
+  try{
+    const res = await fetch('/api/v1/me/usage', { headers: { 'X-API-Key': apiKey }});
+    if(!res.ok) return;
+    const d = await res.json();
+    const t = d.totals;
+    document.getElementById('tokensSaved').textContent = t.tokens_saved.toLocaleString('ru-RU');
+    document.getElementById('tokensSavedPct').textContent = t.tokens_baseline_est
+      ? `сэкономлено (${t.tokens_saved_pct}%)` : 'нет данных за период';
+    document.getElementById('tokensCompare').textContent =
+      `${t.tokens_actual.toLocaleString('ru-RU')} / ${t.tokens_baseline_est.toLocaleString('ru-RU')}`;
+    document.getElementById('avgLatency').textContent = t.avg_latency_ms + ' мс';
+
+    const chart = document.getElementById('dailyChart');
+    chart.innerHTML = '';
+    const max = Math.max(1, ...d.daily.map(x => x.requests));
+    d.daily.forEach(x => {
+      const bar = document.createElement('div');
+      bar.className = 'minibar';
+      bar.style.height = Math.max(2, Math.round(x.requests / max * 48)) + 'px';
+      bar.title = `${x.date}: ${x.requests} запросов, ${x.avg_latency_ms}мс`;
+      chart.appendChild(bar);
+    });
+  }catch(e){ /* тихо — панель необязательна для входа в кабинет */ }
+}
+
+let lastNewKey = null;
+
+async function loadKeys(apiKey){
+  try{
+    const res = await fetch('/api/v1/me/api-keys', { headers: { 'X-API-Key': apiKey }});
+    if(!res.ok) return;
+    const d = await res.json();
+    const list = document.getElementById('keysList');
+    list.innerHTML = '';
+    if(d.api_keys.length === 0){
+      list.innerHTML = '<p style="font-size:13px;color:var(--text-faint)">Дополнительных ключей ещё нет</p>';
+      return;
+    }
+    d.api_keys.forEach(k => {
+      const row = document.createElement('div');
+      row.className = 'keyrow';
+      const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString('ru-RU') : 'ещё не использован';
+      row.innerHTML = `
+        <div>
+          <div class="kname">${k.label}</div>
+          <div class="kmeta">${k.display} · последнее использование: ${lastUsed}</div>
+        </div>
+        <button class="revokebtn" onclick="revokeKey('${k.id}')">Отозвать</button>`;
+      list.appendChild(row);
+    });
+  }catch(e){}
+}
+
+async function createKey(){
+  const label = document.getElementById('newKeyLabel').value.trim() || 'API ключ';
+  if(!currentKey) return;
+  const res = await fetch('/api/v1/me/api-keys', {
+    method: 'POST',
+    headers: { 'X-API-Key': currentKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label })
+  });
+  if(!res.ok) return;
+  const d = await res.json();
+  lastNewKey = d.api_key;
+  document.getElementById('newKeyValue').textContent = d.api_key;
+  document.getElementById('newKeyBox').style.display = 'block';
+  document.getElementById('newKeyLabel').value = '';
+  loadKeys(currentKey);
+}
+
+function copyNewKey(){
+  if(!lastNewKey) return;
+  navigator.clipboard.writeText(lastNewKey);
+}
+
+async function revokeKey(id){
+  if(!currentKey) return;
+  if(!confirm('Отозвать этот ключ? Инструменты, использующие его, потеряют доступ.')) return;
+  await fetch('/api/v1/me/api-keys/' + id, {
+    method: 'DELETE',
+    headers: { 'X-API-Key': currentKey }
+  });
+  loadKeys(currentKey);
 }
 
 async function loginWithKey(){
