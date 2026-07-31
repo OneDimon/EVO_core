@@ -154,6 +154,14 @@ async def _validate_api_key(api_key: str) -> bool:
         return row is not None and row['is_active']
     except Exception as e:
         log.error(f"[Security] API key check error: {e}")
-        # В dev режиме разрешаем мастер-ключ
+        # КРИТИЧНО: раньше здесь не было проверки EVO_ENV, несмотря на
+        # комментарий "в dev режиме" — при ЛЮБОМ сбое БД в ПРОДЕ (обрыв
+        # соединения, исчерпание пула, рестарт Postgres — реалистичные
+        # сценарии под нагрузкой) запрос с EVO_MASTER_KEY принимался как
+        # валидный. Это открытая дверь именно в момент нестабильности прода
+        # — ровно когда нужна БОЛЬШАЯ строгость, а не меньшая.
+        # В production сбой проверки = отказ (fail closed), не обход.
+        if os.getenv("EVO_ENV", "production") != "development":
+            return False
         master = os.getenv("EVO_MASTER_KEY", "")
-        return master and api_key == master
+        return bool(master) and api_key == master

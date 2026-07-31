@@ -64,6 +64,15 @@ services:
       - ./config:/app/config:ro
       - ./admin_ui.html:/app/admin_ui.html:ro
       - ./db/migrations:/app/db/migrations:ro
+      # КРИТИЧНО: /tmp/evo_shards — куда shards/shard_client.py пишет ячейки
+      # при SHARD_PROVIDER=local. Без этого volume пересоздание контейнера
+      # (передеплой, краш-рестарт) стирает ВСЮ накопленную базу решений
+      # молча, без единой ошибки. Если в проде используется облачный
+      # провайдер (gdrive/github/r2) — эта директория просто не используется,
+      # volume безвреден. Для прод-релиза настоятельно рекомендуется
+      # SHARD_PROVIDER=gdrive|github|r2 (см. .env.example) — локальный диск
+      # без внешней репликации остаётся единой точкой отказа даже с volume.
+      - evo_shards_data:/tmp/evo_shards
     environment:
       - UVICORN_WORKERS=${UVICORN_WORKERS:-4}
     # Продакшн: --workers N, без --reload (dev-режим, 1 процесс, авто-рестарт
@@ -90,3 +99,4 @@ services:
 volumes:
   evo_pgdata:
   evo_redis_data:
+  evo_shards_data:
