@@ -20,6 +20,9 @@ async def step_done(req: StepDoneRequest):
     if not await verify_request(req.model_dump(), req.session_id):
         raise HTTPException(401, "invalid_evo_signature")
 
+    from db.metrics import set_session_id
+    set_session_id(req.session_id)
+
     plan = await get_session_plan(req.session_id)
     if not plan:
         return await sign_response(

@@ -35,6 +35,9 @@ async def result(req: ResultRequest):
     if not await verify_request(req.model_dump(), req.session_id):
         raise HTTPException(401, "invalid_evo_signature")
 
+    from db.metrics import set_session_id
+    set_session_id(req.session_id)
+
     vreq = VerifyRequest(
         session_id=req.session_id,
         output=req.result,

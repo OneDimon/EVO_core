@@ -52,6 +52,30 @@ async def get_user_by_key(api_key: str) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_user_by_any_key(api_key: str) -> dict | None:
+    """
+    Резолвит пользователя по любому валидному ключу — новому (evo_api_keys,
+    хэш) или легаси (evo_users.api_key, единственный). Используется в
+    api/routes/me.py — личный кабинет должен пускать по обоим видам ключей.
+    """
+    import hashlib
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT u.* FROM evo_api_keys k
+            JOIN evo_users u ON u.id = k.user_id
+            WHERE k.key_hash = $1 AND k.is_active = TRUE AND u.is_active = TRUE
+        """, key_hash)
+        if row:
+            return dict(row)
+        row = await conn.fetchrow(
+            "SELECT * FROM evo_users WHERE api_key=$1 AND is_active=TRUE",
+            api_key
+        )
+    return dict(row) if row else None
+
+
 async def rotate_api_key(user_id: str) -> str:
     """Генерирует новый API ключ для пользователя."""
     new_key = secrets.token_hex(32)

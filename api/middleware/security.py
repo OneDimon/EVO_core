@@ -5,7 +5,7 @@ Security Middleware — критическая защита EVO-core
 3. HMAC верификация входящих запросов от флагмана
 4. Блокировка при отсутствии секретов в .env
 """
-import os, hmac, hashlib, logging
+import os, hmac, hashlib, logging, asyncio
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from collections import defaultdict
@@ -127,9 +127,10 @@ class EVOSecurityMiddleware:
             await response(scope, receive, send)
             return
 
-        # Верификация API ключа
-        valid = await _validate_api_key(api_key)
-        if not valid:
+        # Верификация API ключа — теперь возвращает user_id/api_key_id для
+        # лога метрик (evo_request_log), не только bool
+        resolved = await _resolve_api_key(api_key)
+        if not resolved:
             response = JSONResponse(
                 {"error": "invalid_api_key",
                  "message": "Недействительный API ключ"},
@@ -138,20 +139,72 @@ class EVOSecurityMiddleware:
             await response(scope, receive, send)
             return
 
-        await self.app(scope, receive, send)
+        # ── Метрики: латентность + статус + токены за весь запрос ──────
+        # reset() — обнуляет счётчики токенов этого asyncio-таска (запрос
+        # обрабатывается в одном таске от middleware до ответа, без
+        # create_task — contextvar виден на всех уровнях цепочки вызовов).
+        import time
+        from db.metrics import reset as metrics_reset, log_request
+        metrics_reset()
+        start = time.monotonic()
+        status_holder = {"code": 200}
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                status_holder["code"] = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            status = "ok" if status_holder["code"] < 400 else "error"
+            error_type = None if status == "ok" else f"http_{status_holder['code']}"
+            endpoint = path.replace("/api/v1", "", 1) or path
+            asyncio.create_task(log_request(
+                user_id=resolved.get("user_id"),
+                api_key_id=resolved.get("api_key_id"),
+                endpoint=endpoint,
+                status=status,
+                error_type=error_type,
+                latency_ms=latency_ms,
+            ))
 
 
-async def _validate_api_key(api_key: str) -> bool:
-    """Проверяет API ключ в таблице users."""
+async def _resolve_api_key(api_key: str) -> "dict | None":
+    """
+    Проверяет API ключ и возвращает {"user_id", "api_key_id"} для лога
+    метрик. Сначала — новая многоключевая таблица evo_api_keys (хэш,
+    личный кабинет), затем — легаси-путь evo_users.api_key (единственный
+    ключ, создаётся через /admin/users, обратная совместимость).
+    """
+    import hashlib
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     try:
         from db.pg_client import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT k.id as api_key_id, k.user_id, u.is_active
+                FROM evo_api_keys k JOIN evo_users u ON u.id = k.user_id
+                WHERE k.key_hash = $1 AND k.is_active = TRUE
+            """, key_hash)
+            if row:
+                if not row["is_active"]:
+                    return None
+                await conn.execute(
+                    "UPDATE evo_api_keys SET last_used_at=NOW() WHERE id=$1",
+                    row["api_key_id"]
+                )
+                return {"user_id": str(row["user_id"]), "api_key_id": str(row["api_key_id"])}
+
+            # Легаси: единственный ключ на evo_users.api_key
             row = await conn.fetchrow(
-                "SELECT id, is_active FROM evo_users WHERE api_key=$1",
-                api_key
+                "SELECT id, is_active FROM evo_users WHERE api_key=$1", api_key
             )
-        return row is not None and row['is_active']
+            if row and row["is_active"]:
+                return {"user_id": str(row["id"]), "api_key_id": None}
+        return None
     except Exception as e:
         log.error(f"[Security] API key check error: {e}")
         # КРИТИЧНО: раньше здесь не было проверки EVO_ENV, несмотря на
@@ -162,6 +215,8 @@ async def _validate_api_key(api_key: str) -> bool:
         # — ровно когда нужна БОЛЬШАЯ строгость, а не меньшая.
         # В production сбой проверки = отказ (fail closed), не обход.
         if os.getenv("EVO_ENV", "production") != "development":
-            return False
+            return None
         master = os.getenv("EVO_MASTER_KEY", "")
-        return bool(master) and api_key == master
+        if master and api_key == master:
+            return {"user_id": None, "api_key_id": None}
+        return None

@@ -30,6 +30,9 @@ async def query(req: QueryRequest):
     if not await verify_request(req.model_dump(), req.session_id):
         raise HTTPException(401, "invalid_evo_signature")
 
+    from db.metrics import set_session_id
+    set_session_id(req.session_id)
+
     stack = (req.context or {}).get("detected_stack", [])
 
     result = await search(

@@ -122,6 +122,170 @@ async def get_audit_log(limit: int = 50,
     return {"audit_log": [dict(r) for r in rows]}
 
 
+# ── Живые прогоны — реальные проверки, не заглушки ─────────────────────────
+
+@router.post("/admin/live-test")
+async def run_live_test(token: str = Header(None, alias="X-Admin-Token")):
+    """
+    Прогоняет реальные проверки основных узлов ядра прямо на этом
+    инстансе (не мок): БД, Redis, эмбеддинг-провайдер, шард-хранилище,
+    поиск в библиотеке, HMAC-подпись. Возвращает pass/fail + латентность +
+    текст ошибки по каждой — для "что и где упало" на живом деплое.
+    """
+    _check_admin(token)
+    import time
+    checks = []
+
+    async def _run(name: str, fn):
+        t0 = time.monotonic()
+        try:
+            detail = await fn()
+            checks.append({
+                "check": name, "status": "ok",
+                "latency_ms": int((time.monotonic() - t0) * 1000),
+                "detail": detail or "OK",
+            })
+        except Exception as e:
+            checks.append({
+                "check": name, "status": "fail",
+                "latency_ms": int((time.monotonic() - t0) * 1000),
+                "detail": str(e)[:300],
+            })
+
+    async def check_postgres():
+        from db.pg_client import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        return "Соединение и запрос выполнены"
+
+    async def check_redis():
+        from db.redis_client import get_redis
+        r = await get_redis()
+        await r.ping()
+        return "PONG получен"
+
+    async def check_embedding():
+        from core.ai_router import ai_router
+        vec = await ai_router.embed("live test проверка эмбеддинга")
+        if not vec or len(vec) != 768:
+            raise RuntimeError(f"Неожиданная размерность вектора: {len(vec) if vec else 0}")
+        return f"Вектор размерности {len(vec)} получен"
+
+    async def check_shard_storage():
+        from shards.shard_client import write_cell, read_cell
+        test_path = "/evo/TEST/live_test_check.zst"
+        marker = f"live-test-{int(time.time())}"
+        await write_cell("", test_path, marker)
+        content, _ = await read_cell("", test_path)
+        if marker not in content:
+            raise RuntimeError("Записанное содержимое не совпало при чтении")
+        return "Запись/чтение ячейки шарда пройдены"
+
+    async def check_library_search():
+        from core.librarian import search
+        result = await search(
+            query_text="live test проверка поиска библиотеки",
+            plan_steps=[], stack=[], session_id="live_test_internal"
+        )
+        return f"scenario={result.get('scenario')}, символов={len(result.get('symbols', []))}"
+
+    async def check_signature():
+        from core.signature import _compute
+        sig1 = _compute({"a": 1}, "test_key")
+        sig2 = _compute({"a": 1}, "test_key")
+        if sig1 != sig2:
+            raise RuntimeError("Подпись не детерминирована")
+        return "HMAC детерминирован"
+
+    await _run("PostgreSQL", check_postgres)
+    await _run("Redis", check_redis)
+    await _run("Gemini Embedding", check_embedding)
+    await _run("Shard Storage (write/read)", check_shard_storage)
+    await _run("Library Search (librarian.search)", check_library_search)
+    await _run("HMAC Signature", check_signature)
+
+    passed = sum(1 for c in checks if c["status"] == "ok")
+    return {
+        "summary": f"{passed}/{len(checks)} passed",
+        "all_passed": passed == len(checks),
+        "checks": checks,
+    }
+
+
+@router.get("/admin/errors")
+async def get_recent_errors(limit: int = 50,
+                             token: str = Header(None, alias="X-Admin-Token")):
+    """Последние упавшие запросы — что и где упало, по каждому пользователю."""
+    _check_admin(token)
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT l.ts, l.endpoint, l.error_type, l.latency_ms,
+                   l.session_id, u.email
+            FROM evo_request_log l
+            LEFT JOIN evo_users u ON u.id = l.user_id
+            WHERE l.status = 'error'
+            ORDER BY l.ts DESC LIMIT $1
+        """, limit)
+    return {"errors": [
+        {
+            "ts": r["ts"].isoformat() if r["ts"] else None,
+            "endpoint": r["endpoint"],
+            "error_type": r["error_type"],
+            "latency_ms": r["latency_ms"],
+            "session_id": r["session_id"],
+            "user_email": r["email"] or "неизвестен",
+        } for r in rows
+    ]}
+
+
+@router.get("/admin/users-metrics")
+async def get_users_metrics(limit: int = 100,
+                             token: str = Header(None, alias="X-Admin-Token")):
+    """
+    Таблица по каждому пользователю: запросы/латентность/токены за 30 дней
+    — для сводной админки владельца. Источник: evo_request_log (миграция 009).
+    """
+    _check_admin(token)
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT u.id, u.email, u.plan, u.is_active, u.last_seen,
+                   COUNT(l.id) as requests_30d,
+                   AVG(l.latency_ms)::float as avg_latency_ms,
+                   COALESCE(SUM(l.tokens_actual), 0) as tokens_actual,
+                   COALESCE(SUM(l.tokens_baseline_est), 0) as tokens_baseline_est,
+                   COUNT(l.id) FILTER (WHERE l.status = 'error') as errors_30d
+            FROM evo_users u
+            LEFT JOIN evo_request_log l
+                ON l.user_id = u.id AND l.ts > NOW() - INTERVAL '30 days'
+            GROUP BY u.id, u.email, u.plan, u.is_active, u.last_seen
+            ORDER BY requests_30d DESC NULLS LAST
+            LIMIT $1
+        """, limit)
+    result = []
+    for r in rows:
+        tokens_actual = int(r["tokens_actual"] or 0)
+        tokens_baseline = int(r["tokens_baseline_est"] or 0)
+        result.append({
+            "user_id": str(r["id"]),
+            "email": r["email"],
+            "plan": r["plan"],
+            "is_active": r["is_active"],
+            "last_seen": r["last_seen"].isoformat() if r["last_seen"] else None,
+            "requests_30d": int(r["requests_30d"] or 0),
+            "avg_latency_ms": round(r["avg_latency_ms"] or 0, 1),
+            "errors_30d": int(r["errors_30d"] or 0),
+            "tokens_actual": tokens_actual,
+            "tokens_baseline_est": tokens_baseline,
+            "tokens_saved": max(0, tokens_baseline - tokens_actual),
+        })
+    return {"users": result}
+
+
 # ── Сводная статистика ядра — для админ-панели ────────────────────────────────
 
 @router.get("/admin/stats")

@@ -18,6 +18,9 @@ async def concierge(req: ConciergeRequest):
     if not await verify_request(req.model_dump(), req.session_id):
         raise HTTPException(401, "invalid_evo_signature")
 
+    from db.metrics import set_session_id
+    set_session_id(req.session_id)
+
     if not req.concierge_answers:
         # Фаза 1: генерируем вопросы через AI Router
         # fix: "concierge" не совпадал с ключом routing_rules "concierge_questions"

@@ -334,6 +334,9 @@ async def load_step_body(session_id: str, symbol_id: str) -> dict:
     # Инкремент рейтинга при вызове
     await increment_rating(symbol_id)
 
+    from db.metrics import add_tokens_baseline
+    add_tokens_baseline(content)
+
     return {
         "symbol_id": symbol_id,
         "label": sym['label'],

@@ -26,6 +26,12 @@ class AIRouter:
     async def _call(self, provider_cfg: dict, prompt: str, task: str) -> str:
         """Универсальный вызов любого провайдера."""
         provider = provider_cfg["provider"]
+        result = await self._do_call(provider_cfg, provider, prompt)
+        from db.metrics import add_tokens_actual
+        add_tokens_actual(text_in=prompt, text_out=result)
+        return result
+
+    async def _do_call(self, provider_cfg: dict, provider: str, prompt: str) -> str:
 
         if "ollama" in provider:
             resp = await self._client.post(
@@ -107,6 +113,8 @@ class AIRouter:
             resp.raise_for_status()
             values = resp.json()["embedding"]["values"]
             # embedding-001 возвращает 768 float — совпадает с pgvector dim
+            from db.metrics import add_tokens_actual
+            add_tokens_actual(text_in=text)
             return values
         except Exception as e:
             log.warning(f"[ai_router] embed() Gemini failed: {e} — hash-fallback")

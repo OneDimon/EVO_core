@@ -15,5 +15,8 @@ class PatchCallbackReq(BaseModel):
 async def patch_callback(req: PatchCallbackReq):
     if not await verify_request(req.model_dump(), req.session_id):
         raise HTTPException(401, "invalid_evo_signature")
+
+    from db.metrics import set_session_id
+    set_session_id(req.session_id)
     result = await get_patch(req.session_id)
     return await sign_response(result, req.session_id)
