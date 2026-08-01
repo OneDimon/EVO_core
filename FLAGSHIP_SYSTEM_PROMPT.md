@@ -185,7 +185,6 @@ POST /api/v1/query
   "partial_instructions": {"step_1": "...", "step_2": null},
   "alternatives": [
     {
-      "symbol_id": "τ^auto_n8n_0033",
       "label": "Решение через n8n (применимо к твоему стеку)",
       "rating": 89
     }
