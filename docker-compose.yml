@@ -31,6 +31,7 @@ services:
       - ./db/migrations/007_universal_fundamental.sql:/docker-entrypoint-initdb.d/007_universal_fundamental.sql
       - ./db/migrations/008_fix_ivfflat_cleanup.sql:/docker-entrypoint-initdb.d/008_fix_ivfflat_cleanup.sql
       - ./db/migrations/009_metrics_and_api_keys.sql:/docker-entrypoint-initdb.d/009_metrics_and_api_keys.sql
+      - ./db/migrations/010_killer_metrics_and_background_stats.sql:/docker-entrypoint-initdb.d/010_killer_metrics_and_background_stats.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U evo_user -d evo_core"]
       interval: 5s

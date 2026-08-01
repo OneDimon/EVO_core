@@ -466,6 +466,29 @@ function UsersMetricsTable({ token }) {
   );
 }
 
+function BackgroundWorkCard({ token }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    if (token) apiFetch('/api/v1/admin/background-stats', {}, token).then(setData);
+  }, [token]);
+
+  if (!data) return null;
+  const t = data.totals;
+  return (
+    <div className="card" style={{gridColumn: 'span 2'}}>
+      <h3>Фоновая работа ядра (Sleep Mode) — 30 дней</h3>
+      <p style={{fontSize: 12, color: '#555', marginBottom: 12}}>
+        Проактивная актуализация/целостность/лигатуры — дубль того, что видит пользователь в личном кабинете
+      </p>
+      <div className="stat"><span className="stat-label">Символов проверено на актуальность</span><span className="stat-value">{t.symbols_actualized}</span></div>
+      <div className="stat"><span className="stat-label">Лигатур сформировано</span><span className="stat-value">{t.ligatures_formed}</span></div>
+      <div className="stat"><span className="stat-label">Проблем целостности найдено</span><span className="stat-value">{t.integrity_fixes}</span></div>
+      <div className="stat"><span className="stat-label">Токенов сэкономлено (оценка)</span><span className="stat-value stat-ok">{t.tokens_saved_theoretical.toLocaleString()}</span></div>
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useAdminToken();
   const [tokenInput, setTokenInput] = useState('');
@@ -539,6 +562,7 @@ function App() {
         {tab === 'users' && (
           <div className="grid">
             <UsersMetricsTable token={token}/>
+            <BackgroundWorkCard token={token}/>
           </div>
         )}
       </div>

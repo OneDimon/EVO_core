@@ -17,12 +17,10 @@ class QueryRequest(BaseModel):
     user_request: str
     flagship_plan: list[str] = []
     context: Optional[dict] = None
-    # "stepwise" (по умолчанию) — инструкции раскрываются по одной через
-    # /step_done, пользователь видит прогресс по шагам. "auto" — ядро сразу
-    # отдаёт полностью развёрнутый план (все шаги с готовым instruction),
-    # без последующих обращений к /step_done — для случаев, когда
-    # пользователь доверяет полный прогон без пошагового контроля.
-    execution_mode: str = "stepwise"
+    # None = флагман не указал явно → используем предпочтение пользователя
+    # из личного кабинета (default_execution_mode), см. ниже. Если флагман
+    # передал своё значение — оно в приоритете (сессия важнее умолчания).
+    execution_mode: Optional[str] = None
     evo_signature: Optional[str] = None
 
 @router.post("/query")
@@ -44,6 +42,14 @@ async def query(req: QueryRequest):
 
     scenario = result["scenario"]
 
+    from db.metrics import set_delivery_meta
+    top = result["symbols"][0] if result.get("symbols") else {}
+    set_delivery_meta(
+        scenario=scenario,
+        confirmed_by=top.get("confirmed_by", 0),
+        rating=top.get("rating_frequency", 0),
+    )
+
     # Сохранить план в Redis — step_done читает отсюда.
     # plan_for_redis уже собран правильно внутри search() (лигатура = 1 шаг,
     # либо независимо найденные по каждому шагу символы с верными номерами)
@@ -58,8 +64,15 @@ async def query(req: QueryRequest):
 
     # execution_mode="auto" — раскрыть содержимое всех шагов сразу
     # (синхронно, не fire-and-forget: развёрнутый текст уходит прямо в этот
-    # ответ, а не через последующие /step_done).
-    if req.execution_mode == "auto" and result.get("plan_for_redis"):
+    # ответ, а не через последующие /step_done). Если флагман не указал
+    # режим явно — используем предпочтение из личного кабинета пользователя.
+    effective_mode = req.execution_mode
+    if effective_mode is None:
+        from db.sessions import get_session
+        session = await get_session(req.session_id)
+        effective_mode = (session or {}).get("default_execution_mode") or "stepwise"
+
+    if effective_mode == "auto" and result.get("plan_for_redis"):
         result["cartridge_steps"] = await resolve_full_cartridge(
             result["cartridge_steps"], result["plan_for_redis"], req.session_id
         )

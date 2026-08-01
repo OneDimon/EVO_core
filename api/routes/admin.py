@@ -288,6 +288,32 @@ async def get_users_metrics(limit: int = 100,
 
 # ── Сводная статистика ядра — для админ-панели ────────────────────────────────
 
+@router.get("/admin/background-stats")
+async def get_background_stats(token: str = Header(None, alias="X-Admin-Token")):
+    """Фоновая работа Sleep Mode за 30 дней — дубль того, что видит юзер в ЛК."""
+    _check_admin(token)
+    from db.pg_client import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT COALESCE(SUM(symbols_actualized),0) as symbols_actualized,
+                   COALESCE(SUM(ligatures_formed),0) as ligatures_formed,
+                   COALESCE(SUM(integrity_fixes),0) as integrity_fixes,
+                   COALESCE(SUM(tokens_saved_theoretical),0) as tokens_saved_theoretical
+            FROM evo_background_stats WHERE day > NOW() - INTERVAL '30 days'
+        """)
+        daily = await conn.fetch("""
+            SELECT day, symbols_actualized, ligatures_formed, integrity_fixes,
+                   tokens_saved_theoretical
+            FROM evo_background_stats WHERE day > NOW() - INTERVAL '30 days'
+            ORDER BY day ASC
+        """)
+    return {
+        "totals": dict(row),
+        "daily": [dict(r) | {"day": r["day"].isoformat()} for r in daily],
+    }
+
+
 @router.get("/admin/stats")
 async def get_core_stats(token: str = Header(None, alias="X-Admin-Token")):
     """

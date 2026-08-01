@@ -32,6 +32,12 @@ _tokens_baseline: contextvars.ContextVar[int] = contextvars.ContextVar(
     "evo_tokens_baseline", default=0)
 _session_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     "evo_metrics_session_id", default="")
+_scenario: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "evo_metrics_scenario", default="")
+_symbol_confirmed_by: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "evo_metrics_confirmed_by", default=0)
+_symbol_rating: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "evo_metrics_rating", default=0)
 
 # Множитель "во сколько раз многословнее был бы сырой сгенерированный
 # ответ ИИ по сравнению с уже дистиллированной инструкцией из библиотеки" —
@@ -46,6 +52,9 @@ def reset():
     _tokens_actual.set(0)
     _tokens_baseline.set(0)
     _session_id.set("")
+    _scenario.set("")
+    _symbol_confirmed_by.set(0)
+    _symbol_rating.set(0)
 
 
 def add_tokens_actual(text_in: str = "", text_out: str = ""):
@@ -68,11 +77,29 @@ def set_session_id(session_id: str):
     _session_id.set(session_id or "")
 
 
+def set_delivery_meta(scenario: str = "", confirmed_by: int = 0, rating: int = 0):
+    """
+    Честные, проверяемые киллер-метрики для ЛК: scenario ('full'|'partial'
+    |'gap') и метаданные топового выданного символа — сколько раз он
+    независимо подтверждён (confirmed_by) и как часто используется
+    (rating). Вызывается из api/routes/query.py после librarian.search().
+    """
+    if scenario:
+        _scenario.set(scenario)
+    if confirmed_by:
+        _symbol_confirmed_by.set(confirmed_by)
+    if rating:
+        _symbol_rating.set(rating)
+
+
 def snapshot() -> dict:
     return {
         "tokens_actual": _tokens_actual.get(),
         "tokens_baseline_est": _tokens_baseline.get(),
         "session_id": _session_id.get(),
+        "scenario": _scenario.get(),
+        "symbol_confirmed_by": _symbol_confirmed_by.get(),
+        "symbol_rating": _symbol_rating.get(),
     }
 
 
@@ -91,11 +118,15 @@ async def log_request(user_id: str, api_key_id: str, endpoint: str,
             await conn.execute("""
                 INSERT INTO evo_request_log
                 (user_id, api_key_id, session_id, endpoint, status, error_type,
-                 latency_ms, tokens_actual, tokens_baseline_est)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                 latency_ms, tokens_actual, tokens_baseline_est,
+                 scenario, symbol_confirmed_by, symbol_rating)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             """, user_id, api_key_id, snap["session_id"] or None, endpoint,
                 status, error_type, latency_ms,
-                snap["tokens_actual"], snap["tokens_baseline_est"])
+                snap["tokens_actual"], snap["tokens_baseline_est"],
+                snap["scenario"] or None,
+                snap["symbol_confirmed_by"] or None,
+                snap["symbol_rating"] or None)
     except Exception as e:
         # Лог метрик не должен ронять запрос пользователя ни при каких
         # обстоятельствах — сбой здесь только логируется.

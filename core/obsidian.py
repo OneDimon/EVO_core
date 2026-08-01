@@ -153,10 +153,12 @@ async def _archive_delta(session_id: str, delta_type: str, output: str, original
                 log.info(f"[Obsidian] Тип Б: новый символ от {parent_id}")
 
 
-async def _check_ligature_candidates(cartridge: dict):
+async def _check_ligature_candidates(cartridge: dict) -> int:
     """
     Проверка тройного подтверждения — SCL_FRACTAL_PROTOCOL.md раздел 6.
     confirmed_by >= 3 → автоматически создать лигатуру.
+    Возвращает число реально созданных лигатур (для статистики фоновой
+    работы, core/sleep_mode.py::_check_integrity).
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -171,6 +173,7 @@ async def _check_ligature_candidates(cartridge: dict):
             LIMIT 5
         """)
 
+    created = 0
     for cand in candidates:
         # Проверяем: существует ли уже лигатура для этих областей?
         roots = cand['confirmed_in'] or []
@@ -209,6 +212,9 @@ async def _check_ligature_candidates(cartridge: dict):
                     "rating_frequency": int(rf_sum or 3),
                 })
                 log.info(f"[Obsidian] Лигатура создана: {ligature_id}")
+                created += 1
+
+    return created
 
 
 async def _update_graph_stats(applied_stack: list[str]):

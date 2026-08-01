@@ -64,8 +64,36 @@ async def get_me(x_api_key: str = Header(None, alias="X-API-Key")):
             "flagship_sessions_30d": int(sessions or 0),
             "limit_per_month": limits["requests_per_month"],
         },
+        "settings": {
+            "default_execution_mode": user.get("default_execution_mode") or "stepwise",
+        },
         "api_key_masked": x_api_key[:8] + "****" + x_api_key[-4:],
     }
+
+
+class UpdateSettingsReq(BaseModel):
+    default_execution_mode: str
+
+
+@router.put("/me/settings")
+async def update_settings(req: UpdateSettingsReq,
+                           x_api_key: str = Header(None, alias="X-API-Key")):
+    """
+    Предпочтение по умолчанию: 'stepwise' — видно прогресс по шагам через
+    /step_done; 'auto' — ядро сразу отдаёт весь план целиком. Применяется,
+    только когда флагман сам не указал execution_mode явно в /query —
+    сессия важнее умолчания (см. api/routes/query.py).
+    """
+    if req.default_execution_mode not in ("stepwise", "auto"):
+        raise HTTPException(400, "default_execution_mode: 'stepwise' или 'auto'")
+    user = await _current_user(x_api_key)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE evo_users SET default_execution_mode=$2 WHERE id=$1",
+            user["id"], req.default_execution_mode
+        )
+    return {"status": "ok", "default_execution_mode": req.default_execution_mode}
 
 
 # ── API-ключи — создание/список/отзыв самим пользователем ──────────────────
@@ -181,6 +209,34 @@ async def get_usage_details(x_api_key: str = Header(None, alias="X-API-Key")):
             WHERE user_id=$1 AND ts > NOW() - INTERVAL '30 days'
             GROUP BY endpoint ORDER BY cnt DESC
         """, user["id"])
+        # Честные, проверяемые "киллер"-метрики: доля решений, пришедших
+        # 100%-подтверждёнными с первого раза (scenario='full', без
+        # партиального/пустого исхода), и насколько независимо решения,
+        # которыми пользовался этот аккаунт, подтверждены другими
+        # (confirmed_by символа в момент выдачи).
+        killer = await conn.fetchrow("""
+            SELECT COUNT(*) FILTER (WHERE scenario='full') as full_count,
+                   COUNT(*) FILTER (WHERE scenario IS NOT NULL) as scenario_total,
+                   AVG(symbol_confirmed_by)::float as avg_confirmed_by,
+                   AVG(symbol_rating)::float as avg_rating
+            FROM evo_request_log
+            WHERE user_id=$1 AND ts > NOW() - INTERVAL '30 days' AND endpoint='/query'
+        """, user["id"])
+        # Фоновая работа ядра — общая по библиотеке (не привязана к одному
+        # user_id, см. миграцию 010), показывается как честный общий вклад,
+        # не как выдуманная персональная атрибуция.
+        bg = await conn.fetchrow("""
+            SELECT COALESCE(SUM(symbols_actualized),0) as symbols_actualized,
+                   COALESCE(SUM(ligatures_formed),0) as ligatures_formed,
+                   COALESCE(SUM(integrity_fixes),0) as integrity_fixes,
+                   COALESCE(SUM(tokens_saved_theoretical),0) as tokens_saved_theoretical
+            FROM evo_background_stats WHERE day > NOW() - INTERVAL '30 days'
+        """)
+
+    ideal_match_pct = (
+        round(100 * killer["full_count"] / killer["scenario_total"], 1)
+        if killer["scenario_total"] else None
+    )
 
     tokens_actual = int(totals["tokens_actual"] or 0)
     tokens_baseline = int(totals["tokens_baseline_est"] or 0)
@@ -197,6 +253,18 @@ async def get_usage_details(x_api_key: str = Header(None, alias="X-API-Key")):
             "tokens_baseline_est": tokens_baseline,
             "tokens_saved": tokens_saved,
             "tokens_saved_pct": saved_pct,
+        },
+        "killer_stats": {
+            "ideal_match_pct": ideal_match_pct,
+            "avg_peer_confirmations": round(killer["avg_confirmed_by"] or 0, 1),
+            "avg_solution_rating": round(killer["avg_rating"] or 0, 1),
+        },
+        "background_work": {
+            "note": "Общий вклад фоновой работы ядра по всей библиотеке за 30 дней — не только для вас, но и в вашу пользу как часть общего корпуса решений",
+            "symbols_actualized": int(bg["symbols_actualized"] or 0),
+            "ligatures_formed": int(bg["ligatures_formed"] or 0),
+            "integrity_fixes": int(bg["integrity_fixes"] or 0),
+            "tokens_saved_theoretical": int(bg["tokens_saved_theoretical"] or 0),
         },
         "daily": [
             {

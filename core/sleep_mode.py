@@ -118,6 +118,7 @@ async def _sleep_cycle():
         ("Поиск потенциальных лигатур", _find_ligature_candidates),
         ("Проверка гипотез", _check_hypotheses),
         ("Проверка целостности", _check_integrity),
+        ("Аномалии latency/ошибок (evo_request_log)", _check_request_anomalies),
         ("Апдейт графа знаний", _update_graph),
         ("Статистика", _generate_stats),
         ("Автонаполнение ядра (Канал 1)", _auto_fill_knowledge),
@@ -200,6 +201,27 @@ async def _prune_outdated_knowledge():
         log.info("[Sleep] Очистка устаревших знаний: нечего чистить")
 
 
+async def _bump_background_stat(field: str, n: int = 1, tokens_est: int = 0):
+    """
+    Копит дневной роллап фоновой выгоды (evo_background_stats, миграция
+    010) — источник для карточки "фоновая работа ядра" в обеих админках.
+    """
+    if n <= 0:
+        return
+    allowed = {"symbols_actualized", "ligatures_formed", "integrity_fixes"}
+    if field not in allowed:
+        raise ValueError(f"Недопустимое поле evo_background_stats: {field}")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(f"""
+            INSERT INTO evo_background_stats (day, {field}, tokens_saved_theoretical)
+            VALUES (CURRENT_DATE, $1, $2)
+            ON CONFLICT (day) DO UPDATE SET
+                {field} = evo_background_stats.{field} + $1,
+                tokens_saved_theoretical = evo_background_stats.tokens_saved_theoretical + $2
+        """, n, tokens_est)
+
+
 async def _actualize_tech_currency():
     """
     Задача 1 цикла СОН (сразу после очистки) — проактивная актуализация
@@ -252,6 +274,8 @@ async def _actualize_tech_currency():
     if not total:
         log.info("[Sleep] Актуализация last_tech_check: всё актуально")
         return
+
+    await _bump_background_stat("symbols_actualized", total, tokens_est=total * 100)
 
     log.info(
         f"[Sleep] Актуализация last_tech_check: {len(never_checked)} никогда "
@@ -372,9 +396,15 @@ async def _check_integrity():
             f"obsidian._check_ligature_candidates (идемпотентно, LIMIT 5/вызов, "
             f"остаток доберётся в следующих циклах СОН)"
         )
-        await _check_ligature_candidates({})
+        created = await _check_ligature_candidates({})
+        if created:
+            await _bump_background_stat("ligatures_formed", created, tokens_est=created * 200)
 
     total_issues = len(no_shard) + len(missing_files) + len(broken_legacy)
+    if total_issues:
+        # Детекция, не автофикс (кроме лигатур выше) — но найти проблему
+        # до того, как её словит пользователь, тоже реальная фоновая польза.
+        await _bump_background_stat("integrity_fixes", total_issues, tokens_est=total_issues * 150)
     if total_issues == 0 and not pending_ligature_count:
         log.info("[Sleep] Целостность: нарушений не найдено")
     elif total_issues >= 10:
@@ -394,6 +424,65 @@ async def _check_integrity():
                  "consequences": "Повтор при следующем росте количества нарушений"},
             ]
         )
+
+
+async def _check_request_anomalies():
+    """
+    Аномалии latency/ошибок за последний час против фонового значения за
+    предыдущие 24 часа — не отдельный сервис алертинга, а ещё одна задача
+    Sleep Mode поверх уже существующего канала notify_architect (тот же,
+    что использует Telegram-бот для остальных уведомлений). Источник —
+    evo_request_log (миграция 009).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        recent = await conn.fetchrow("""
+            SELECT COUNT(*) as total,
+                   COUNT(*) FILTER (WHERE status='error') as errors,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) as p95_latency
+            FROM evo_request_log WHERE ts > NOW() - INTERVAL '1 hour'
+        """)
+        baseline = await conn.fetchrow("""
+            SELECT COUNT(*) as total,
+                   COUNT(*) FILTER (WHERE status='error') as errors,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) as p95_latency
+            FROM evo_request_log
+            WHERE ts BETWEEN NOW() - INTERVAL '25 hours' AND NOW() - INTERVAL '1 hour'
+        """)
+
+    if not recent["total"] or not baseline["total"] or baseline["total"] < 20:
+        return  # недостаточно данных за сутки для честного сравнения
+
+    recent_err_rate = recent["errors"] / recent["total"]
+    baseline_err_rate = baseline["errors"] / baseline["total"] if baseline["total"] else 0
+    recent_p95 = recent["p95_latency"] or 0
+    baseline_p95 = baseline["p95_latency"] or 1
+
+    problems = []
+    if recent_err_rate > 0.05 and recent_err_rate > baseline_err_rate * 3:
+        problems.append(
+            f"Всплеск ошибок: {recent_err_rate*100:.1f}% за час "
+            f"против {baseline_err_rate*100:.1f}% фоново"
+        )
+    if baseline_p95 > 0 and recent_p95 > baseline_p95 * 1.5 and recent_p95 > 500:
+        problems.append(
+            f"Деградация latency p95: {recent_p95:.0f}мс за час "
+            f"против {baseline_p95:.0f}мс фоново"
+        )
+
+    if problems:
+        await notify_architect(
+            zone="request_anomaly",
+            problem="; ".join(problems),
+            options=[
+                {"description": "Проверить /admin/errors и живой прогон вручную",
+                 "consequences": "Точная диагностика перед действием"},
+                {"description": "Игнорировать — временный всплеск",
+                 "consequences": "Повтор уведомления при следующем цикле СОН, если не пройдёт"},
+            ]
+        )
+    else:
+        log.info("[Sleep] Аномалий latency/ошибок не найдено")
 
 
 async def _check_shard_capacity():

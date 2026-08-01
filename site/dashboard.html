@@ -105,6 +105,15 @@ main{padding:48px 0 80px}
 .minibar-wrap{display:flex;gap:2px;align-items:flex-end;height:48px;margin-top:16px}
 .minibar{flex:1;background:var(--signal);border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
 .minibar:hover{opacity:1}
+
+.killerrow{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.killerrow:last-child{border-bottom:none}
+.killerrow .kv{font-weight:700;color:var(--signal)}
+.toggle-group{display:flex;gap:8px;margin-top:10px}
+.toggle-opt{flex:1;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;text-align:center;font-size:13px}
+.toggle-opt.active{border-color:var(--signal);background:rgba(198,255,94,0.08);color:var(--signal);font-weight:600}
+.toggle-opt .sub{display:block;font-size:11px;color:var(--text-faint);margin-top:2px}
+.bgnote{font-size:12px;color:var(--text-faint);margin-top:10px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -200,6 +209,44 @@ main{padding:48px 0 80px}
           <span class="rv" id="avgLatency">—</span>
         </div>
         <div class="minibar-wrap" id="dailyChart"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Точность решений</h2>
+        <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:6px">
+          Ядро не генерирует ответы "на глаз" — оно ищет уже проверенное решение и
+          отдаёт его только когда уверено на 100%. Ниже — как часто это удаётся
+        </p>
+        <div class="killerrow">
+          <span class="rk">Решений выдано 100%-подтверждёнными с первого раза</span>
+          <span class="kv" id="idealMatchPct">—</span>
+        </div>
+        <div class="killerrow">
+          <span class="rk">В среднем подтверждено независимо другими</span>
+          <span class="kv" id="peerConfirm">—</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Как ядро работает в фоне</h2>
+        <p class="bgnote" id="bgNote">Загрузка...</p>
+        <div class="row" style="border-bottom:none"><span class="rk">Решений проверено на актуальность</span><span class="rv" id="bgActualized">—</span></div>
+        <div class="row" style="border-bottom:none"><span class="rk">Новых связок знаний найдено</span><span class="rv" id="bgLigatures">—</span></div>
+      </div>
+
+      <div class="panel">
+        <h2>Режим выдачи по умолчанию</h2>
+        <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:6px">
+          Применяется, если ваш ИИ-инструмент сам не указал режим для конкретной сессии
+        </p>
+        <div class="toggle-group">
+          <div class="toggle-opt" id="optStepwise" onclick="setExecutionMode('stepwise')">
+            По шагам<span class="sub">видно прогресс каждого шага</span>
+          </div>
+          <div class="toggle-opt" id="optAuto" onclick="setExecutionMode('auto')">
+            Полный план сразу<span class="sub">без пошагового контроля</span>
+          </div>
+        </div>
       </div>
 
       <div class="panel">
@@ -307,6 +354,7 @@ function renderDash(data, apiKey){
   currentKey = apiKey;
   loadUsage(apiKey);
   loadKeys(apiKey);
+  loadSettings(apiKey);
 }
 
 async function loadUsage(apiKey){
@@ -322,6 +370,19 @@ async function loadUsage(apiKey){
       `${t.tokens_actual.toLocaleString('ru-RU')} / ${t.tokens_baseline_est.toLocaleString('ru-RU')}`;
     document.getElementById('avgLatency').textContent = t.avg_latency_ms + ' мс';
 
+    const k = d.killer_stats;
+    document.getElementById('idealMatchPct').textContent =
+      k.ideal_match_pct === null ? 'нет данных' : k.ideal_match_pct + '%';
+    document.getElementById('peerConfirm').textContent =
+      k.avg_peer_confirmations ? '≈' + Math.round(k.avg_peer_confirmations) + ' раз' : '—';
+
+    const bg = d.background_work;
+    document.getElementById('bgActualized').textContent = bg.symbols_actualized.toLocaleString('ru-RU');
+    document.getElementById('bgLigatures').textContent = bg.ligatures_formed.toLocaleString('ru-RU');
+    document.getElementById('bgNote').textContent =
+      'Библиотека решений, которой вы пользуетесь, постоянно поддерживается в актуальном ' +
+      'состоянии автоматически — это общий вклад в весь корпус за 30 дней.';
+
     const chart = document.getElementById('dailyChart');
     chart.innerHTML = '';
     const max = Math.max(1, ...d.daily.map(x => x.requests));
@@ -333,6 +394,30 @@ async function loadUsage(apiKey){
       chart.appendChild(bar);
     });
   }catch(e){ /* тихо — панель необязательна для входа в кабинет */ }
+}
+
+async function loadSettings(apiKey){
+  try{
+    const res = await fetch('/api/v1/me', { headers: { 'X-API-Key': apiKey }});
+    if(!res.ok) return;
+    const d = await res.json();
+    renderExecutionMode(d.settings.default_execution_mode);
+  }catch(e){}
+}
+
+function renderExecutionMode(mode){
+  document.getElementById('optStepwise').classList.toggle('active', mode === 'stepwise');
+  document.getElementById('optAuto').classList.toggle('active', mode === 'auto');
+}
+
+async function setExecutionMode(mode){
+  if(!currentKey) return;
+  renderExecutionMode(mode);
+  await fetch('/api/v1/me/settings', {
+    method: 'PUT',
+    headers: { 'X-API-Key': currentKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ default_execution_mode: mode })
+  });
 }
 
 let lastNewKey = null;
